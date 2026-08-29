@@ -216,11 +216,17 @@
       <span class="rswitch" id="v_rswitch"></span>
     </div>
     <div class="ranges" id="ranges">
-      <button class="rng" data-d="14" data-on="1" type="button">2주</button>
+      <button class="rng" data-d="1d" type="button">1일</button>
+      <button class="rng" data-d="7" data-on="1" type="button">1주</button>
       <button class="rng" data-d="30" type="button">1달</button>
-      <button class="rng" data-d="90" type="button">3달</button>
-      <button class="rng" data-d="0" type="button">전체</button>
+      <button class="rng" data-d="season" type="button">시즌별</button>
     </div>
+    <div class="ranges" id="daybar" hidden>
+      <button class="rng" id="day-prev" type="button" title="이전 날짜">◀</button>
+      <span class="rng" id="day-label" style="cursor:default"></span>
+      <button class="rng" id="day-next" type="button" title="다음 날짜">▶</button>
+    </div>
+    <div class="ranges" id="seasonbar" hidden></div>
     <div class="tiles" id="tiles"></div>
     <figure>
       <div id="chart"></div>
@@ -235,7 +241,7 @@
 </div>
 
 <p class="note">
-  하루 1회 수집(UTC 기준 전날 판매분) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 그날 판매 건수 ·
+  전 서버 판매 기록을 수집해 5분 단위·일 단위로 집계(날짜는 UTC 기준) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 판매 건수 ·
   붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
   시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
@@ -254,20 +260,22 @@
     epic: "서사적인", legendary: "전설적인", unique: "유일한", artifact: "유물"
   };
 
-  let CATALOG = {}, MONTHS = [], PATCHES = [], SEASONS = [];
-  const monthData = {};
-  let currentItem = null, currentDays = 14;
+  let CATALOG = {}, MONTHS = [], PATCHES = [], SEASONS = [], DAYS5M = [];
+  const monthData = {}, day5mCache = {};
+  let currentItem = null, currentRange = 7, currentSeason = null, current5mDate = null;
 
   const fmtGold = (v) => v >= 10000 ? (Math.round(v / 100) / 10).toLocaleString() + "k" : Math.round(v).toLocaleString();
   const fmtPct = (p) => (p > 0 ? "+" : "") + (Math.round(p * 10) / 10) + "%";
 
   async function boot () {
-    const [cat, months, patches] = await Promise.all([
+    const [cat, months, patches, days5m] = await Promise.all([
       fetch("catalog.json").then(r => r.json()),
       fetch("data2/months.json").then(r => r.ok ? r.json() : []).catch(() => []),
       fetch("patches.json").then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch("data5m/index.json").then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
     CATALOG = cat; MONTHS = months; PATCHES = patches;
+    DAYS5M = (days5m || []).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
     buildNameIndex();
     // 시즌 목록 (kind === "season", 시작일 오름차순) + 현재 시즌 배지
     SEASONS = PATCHES.filter(p => p.kind === "season" && p.date)
@@ -474,11 +482,53 @@
 
   $("ranges").addEventListener("click", async (ev) => {
     const b = ev.target.closest(".rng");
-    if (!b) return;
-    currentDays = parseInt(b.dataset.d, 10);
+    if (!b || !b.dataset.d) return;
+    const d = b.dataset.d;
+    currentRange = (d === "1d" || d === "season") ? d : parseInt(d, 10);
     [...$("ranges").children].forEach(x => x.dataset.on = x === b ? "1" : "0");
+    updateBars();
     await render();
   });
+
+  // 1일(날짜 넘기기)·시즌별(시즌 선택) 보조 줄
+  function updateBars () {
+    const dayMode = currentRange === "1d", seaMode = currentRange === "season";
+    $("daybar").hidden = !dayMode;
+    $("seasonbar").hidden = !seaMode;
+    if (dayMode) {
+      if (!current5mDate || !DAYS5M.includes(current5mDate)) current5mDate = DAYS5M[DAYS5M.length - 1] || null;
+      $("day-label").textContent = current5mDate || "5분 데이터 없음";
+    }
+    if (seaMode) {
+      const today = new Date().toISOString().slice(0, 10);
+      const dataStart = MONTHS.length ? MONTHS[0] + "-01" : today;
+      const list = SEASONS.filter((s, i) => s.date <= today &&
+        ((SEASONS[i + 1] && SEASONS[i + 1].date) || today) >= dataStart);
+      if (!currentSeason || !list.includes(currentSeason)) currentSeason = list[list.length - 1] || null;
+      $("seasonbar").innerHTML = list.length ? list.map(s =>
+        '<button class="rng" data-season="' + s.date + '" data-on="' +
+        (currentSeason && s.date === currentSeason.date ? 1 : 0) + '" type="button">시즌 ' + s.num + '</button>').join("") :
+        '<span class="rng" style="cursor:default">시즌 데이터 없음</span>';
+    }
+  }
+
+  $("seasonbar").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-season]");
+    if (!b) return;
+    currentSeason = SEASONS.find(s => s.date === b.dataset.season) || null;
+    updateBars();
+    await render();
+  });
+
+  async function stepDay (n) {
+    const j = DAYS5M.indexOf(current5mDate) + n;
+    if (j < 0 || j >= DAYS5M.length) return;
+    current5mDate = DAYS5M[j];
+    $("day-label").textContent = current5mDate;
+    await render();
+  }
+  $("day-prev").addEventListener("click", () => stepDay(-1));
+  $("day-next").addEventListener("click", () => stepDay(1));
 
   async function buildSeries () {
     const rows = [];
@@ -490,11 +540,30 @@
       }
     }
     rows.sort((a, b) => a.date < b.date ? -1 : 1);
-    if (currentDays > 0 && rows.length) {
-      const cut = new Date(Date.now() - currentDays * 864e5).toISOString().slice(0, 10);
+    if (currentRange === "season" && currentSeason) {
+      const i = SEASONS.indexOf(currentSeason);
+      const end = SEASONS[i + 1] ? shiftDate(SEASONS[i + 1].date, -1) : "9999-99-99";
+      return rows.filter(r => r.date >= currentSeason.date && r.date <= end);
+    }
+    if (typeof currentRange === "number" && currentRange > 0 && rows.length) {
+      const cut = new Date(Date.now() - currentRange * 864e5).toISOString().slice(0, 10);
       return rows.filter(r => r.date >= cut);
     }
     return rows;
+  }
+
+  // 하루치 5분 버킷 시리즈 (data5m/날짜.json)
+  async function build5mSeries () {
+    if (!current5mDate) return [];
+    if (day5mCache[current5mDate] === undefined) {
+      try { day5mCache[current5mDate] = await fetch("data5m/" + current5mDate + ".json").then(r => r.json()); }
+      catch (e) { day5mCache[current5mDate] = { items: {} }; }
+    }
+    const buckets = ((day5mCache[current5mDate] || {}).items || {})[currentItem] || [];
+    return buckets.map(b => ({
+      label: String(Math.floor(b[0] / 12)).padStart(2, "0") + ":" + String((b[0] % 12) * 5).padStart(2, "0"),
+      med: b[1], min: b[2], max: b[3], cnt: b[4]
+    }));
   }
 
   /* ── 패치 영향 분석 ── */
@@ -536,7 +605,8 @@
   const W = 720, H = 270, VH = 66, P = { t: 16, r: 14, b: 22, l: 54 };
 
   async function render () {
-    const rows = await buildSeries();
+    const intraday = currentRange === "1d";
+    const rows = intraday ? await build5mSeries() : await buildSeries();
     const chart = $("chart"), tip = $("tip"), tiles = $("tiles");
     $("nodata").hidden = rows.length > 0;
     tiles.innerHTML = ""; chart.innerHTML = "";
@@ -566,12 +636,12 @@
     const nLab = Math.min(6, rows.length);
     const xLabs = Array.from({ length: nLab }, (_, k) => {
       const i = Math.round(k * (rows.length - 1) / Math.max(1, nLab - 1));
-      return '<text x="' + sx(i).toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + rows[i].date.slice(5) + '</text>';
+      return '<text x="' + sx(i).toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + (rows[i].label || rows[i].date.slice(5)) + '</text>';
     }).join("");
 
-    // 패치·시즌 마커 (기간 내 배포일) — 핫픽스는 붉은 점선, 시즌 시작은 금색 실선
+    // 패치·시즌 마커 (기간 내 배포일) — 핫픽스는 붉은 점선, 시즌 시작은 금색 실선 (1일 모드에선 생략)
     const patchByDate = {};
-    const patchAnalysis = analyzePatches(rows);
+    const patchAnalysis = intraday ? [] : analyzePatches(rows);
     const marks = patchAnalysis.filter(p => dateIndex[p.date] !== undefined).map(p => {
       patchByDate[p.date] = p;
       const x = sx(dateIndex[p.date]).toFixed(1);
@@ -611,7 +681,7 @@
       '</svg>' +
       '<svg viewBox="0 0 ' + W + ' ' + VH + '" role="img" aria-label="거래량">' +
       '<text x="' + (P.l - 7) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">거래량</text>' +
-      '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + '건/일</text>' +
+      '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + (intraday ? '건/5분' : '건/일') + '</text>' +
       vols + '</svg>';
 
     // 요약 타일
@@ -661,7 +731,7 @@
       cross.setAttribute("x1", sx(i)); cross.setAttribute("x2", sx(i)); cross.setAttribute("opacity", ".3");
       cur.setAttribute("cx", sx(i)); cur.setAttribute("cy", sy(r.med)); cur.setAttribute("opacity", "1");
       const patch = patchByDate[r.date];
-      tip.textContent = r.date + (patch ? "  ◆ " + patch.title : "") +
+      tip.textContent = (r.label ? current5mDate + " " + r.label : r.date) + (patch ? "  ◆ " + patch.title : "") +
         "\n중앙값 " + fmtGold(r.med) + "  (" + fmtGold(r.min) + "~" + fmtGold(r.max) + ")\n거래 " + r.cnt.toLocaleString() + "건";
       tip.style.opacity = "1";
       tip.style.left = Math.min(rect.width - 170, Math.max(0, (sx(i) / W) * rect.width + 12)) + "px";

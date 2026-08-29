@@ -156,7 +156,8 @@ def save(day, detail, daily, merge=False):
         month[daykey] = daily
     json.dump(month, open(p2, "w", encoding="utf-8"), separators=(",", ":"))
 
-    days = sorted(f[:-5] for f in os.listdir(d5) if f.endswith(".json"))
+    days = sorted(f[:-5] for f in os.listdir(d5)
+                  if f.endswith(".json") and f != "index.json")
     json.dump(days, open(os.path.join(d5, "index.json"), "w"), separators=(",", ":"))
     months = sorted(f[:-5] for f in os.listdir(d2)
                     if f.endswith(".json") and f != "months.json")
