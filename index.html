@@ -291,16 +291,20 @@
       const prev = dayMap[Pd];
       const movers = ids
         .filter(id => prev[id] && prev[id][3] >= 5 && day[id][3] >= 5 && prev[id][0] > 0)
-        .map(id => ({ id, pct: (day[id][0] - prev[id][0]) / prev[id][0] * 100 }));
+        .map(id => ({ id, from: prev[id][0], to: day[id][0],
+                      pct: (day[id][0] - prev[id][0]) / prev[id][0] * 100 }));
       movers.sort((a, b) => b.pct - a.pct);
       ups = movers.filter(m => m.pct >= 3).slice(0, 6);
       downs = movers.filter(m => m.pct <= -3).slice(-6).reverse();
     }
+    const moverVal = (m, cls) =>
+      '<span class="val">' + fmtGold(m.from) + '→<b style="color:var(--ink)">' + fmtGold(m.to) + '</b> ' +
+      '<span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
     $("h_up").innerHTML = ups.length ? ups.map(m =>
-      li(m.id, '<span class="val up">' + fmtPct(m.pct) + '</span>')).join("") :
+      li(m.id, moverVal(m, "val up"))).join("") :
       '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
     $("h_down").innerHTML = downs.length ? downs.map(m =>
-      li(m.id, '<span class="val down">' + fmtPct(m.pct) + '</span>')).join("") :
+      li(m.id, moverVal(m, "val down"))).join("") :
       '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
 
     $("placeholder").hidden = true;
