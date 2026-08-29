@@ -201,9 +201,9 @@
     <div id="dash" hidden>
       <div class="tiles" id="h_tiles"></div>
       <div class="cols">
-        <div><h3>어제 거래량 TOP</h3><div id="h_vol"></div></div>
-        <div><h3>급등 (전일 대비)</h3><div id="h_up"></div></div>
-        <div><h3>급락 (전일 대비)</h3><div id="h_down"></div></div>
+        <div><h3>최근 수집일 거래량 TOP</h3><div id="h_vol"></div></div>
+        <div><h3>급등 (직전 수집일 대비)</h3><div id="h_up"></div></div>
+        <div><h3>급락 (직전 수집일 대비)</h3><div id="h_down"></div></div>
       </div>
     </div>
   </div>
@@ -309,7 +309,7 @@
 
     const totCnt = ids.reduce((s, id) => s + day[id][3], 0);
     $("h_tiles").innerHTML =
-      tile("최근 수집일", L.slice(5).replace("-", "/")) +
+      tile("최근 수집일 (UTC)", L.slice(5).replace("-", "/")) +
       tile("기록된 일수", withData.length + ' <small>일</small>') +
       tile("그날 거래", totCnt.toLocaleString() + ' <small>건</small>') +
       tile("거래된 아이템", ids.length.toLocaleString() + ' <small>종</small>');
