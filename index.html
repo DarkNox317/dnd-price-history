@@ -80,6 +80,9 @@
   .item-head .en { color: var(--muted); font-family: var(--mono); font-size: .78rem; }
   .item-head .rar { font-size: .74rem; color: var(--ink-2); border: 1px solid var(--edge);
     border-radius: 999px; padding: .12rem .6rem; margin-left: auto; }
+  .season-chip { display: inline-block; font-size: .72rem; font-family: var(--mono);
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+    padding: .1rem .6rem; margin-left: .6rem; vertical-align: .35em; letter-spacing: .04em; }
 
   .ranges { display: flex; gap: .4rem; margin: .9rem 0 1rem; flex-wrap: wrap; }
   .rng { background: var(--ground); border: 1px solid var(--edge); border-radius: 999px;
@@ -129,8 +132,8 @@
 
 <header>
   <p class="eyebrow">Dark and Darker</p>
-  <h1>시세 기록</h1>
-  <p class="sub">아이템별 날짜 시세와 거래량, 그리고 패치가 가격에 준 영향까지.</p>
+  <h1>시세 기록<span class="season-chip" id="season-chip" hidden></span></h1>
+  <p class="sub">아이템별 날짜 시세와 거래량, 그리고 패치·시즌이 가격에 준 영향까지.</p>
 </header>
 
 <div class="searchbox">
@@ -168,8 +171,8 @@
 
 <p class="note">
   하루 1회 수집(UTC 기준 전날 판매분) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 그날 판매 건수 ·
-  차트의 세로 점선은 패치 배포일 · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
-  데이터 출처: DarkerDB
+  붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
+  시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
 
 </div>
@@ -186,7 +189,7 @@
     epic: "서사적인", legendary: "전설적인", unique: "유일한", artifact: "유물"
   };
 
-  let CATALOG = {}, MONTHS = [], PATCHES = [];
+  let CATALOG = {}, MONTHS = [], PATCHES = [], SEASONS = [];
   const monthData = {};
   let currentItem = null, currentDays = 14;
 
@@ -200,6 +203,17 @@
       fetch("patches.json").then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
     CATALOG = cat; MONTHS = months; PATCHES = patches;
+    // 시즌 목록 (kind === "season", 시작일 오름차순) + 현재 시즌 배지
+    SEASONS = PATCHES.filter(p => p.kind === "season" && p.date)
+      .map(p => ({ ...p, num: (p.title.match(/#(\d+)/) || [])[1] || "?" }))
+      .sort((a, b) => a.date < b.date ? -1 : 1);
+    const today = new Date().toISOString().slice(0, 10);
+    const cur = [...SEASONS].reverse().find(s => s.date <= today);
+    if (cur) {
+      const chip = $("season-chip");
+      chip.hidden = false;
+      chip.textContent = "시즌 " + cur.num + " 진행 중";
+    }
     if (!MONTHS.length) {
       $("placeholder").innerHTML = "첫 수집이 아직 진행 중이야.<br>몇 시간 뒤에 다시 열면 데이터가 보이기 시작해.";
     }
@@ -366,12 +380,18 @@
       return '<text x="' + sx(i).toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + rows[i].date.slice(5) + '</text>';
     }).join("");
 
-    // 패치 마커 (기간 내 배포일)
+    // 패치·시즌 마커 (기간 내 배포일) — 핫픽스는 붉은 점선, 시즌 시작은 금색 실선
     const patchByDate = {};
     const patchAnalysis = analyzePatches(rows);
     const marks = patchAnalysis.filter(p => dateIndex[p.date] !== undefined).map(p => {
       patchByDate[p.date] = p;
       const x = sx(dateIndex[p.date]).toFixed(1);
+      if (p.kind === "season") {
+        const num = (p.title.match(/#(\d+)/) || [])[1] || "?";
+        return '<line x1="' + x + '" y1="' + (P.t - 4) + '" x2="' + x + '" y2="' + (H - P.b) +
+               '" stroke="var(--accent)" stroke-width="1.8" opacity=".85"/>' +
+               '<text x="' + x + '" y="' + (P.t - 7) + '" fill="var(--accent)" font-size="10" font-weight="700" font-family="var(--mono)" text-anchor="middle">시즌 ' + num + '</text>';
+      }
       return '<line x1="' + x + '" y1="' + P.t + '" x2="' + x + '" y2="' + (H - P.b) +
              '" stroke="var(--mark)" stroke-width="1.2" stroke-dasharray="4 4" opacity=".55"/>' +
              '<path d="M' + x + ' ' + (P.t - 2) + ' l4 5 -4 5 -4 -5 z" fill="var(--mark)"/>';
@@ -423,6 +443,14 @@
     if (patchAnalysis.length) {
       $("patchbox").hidden = false;
       pl.innerHTML = patchAnalysis.map(p => {
+        if (p.kind === "season") {
+          const num = (p.title.match(/#(\d+)/) || [])[1] || "?";
+          const deltaTxt = p.delta === null ? "" :
+            '<span class="delta ' + deltaWord(p.delta)[1] + '">' + fmtPct(p.delta) + '</span>';
+          return '<div class="pt"><span class="d">' + p.date + '</span>' +
+            '<span class="t" style="color:var(--accent)">시즌 ' + num + ' 시작</span>' + deltaTxt +
+            '<span class="desc">시즌 초기화(와이프) — 이후 약 2주간 마켓 잠금</span></div>';
+        }
         const [word, cls2] = deltaWord(p.delta);
         const deltaTxt = p.delta === null ? "—" : fmtPct(p.delta);
         return '<div class="pt"><span class="d">' + p.date + '</span>' +

@@ -58,6 +58,17 @@ def collect_day(day, only=None):
 
     frm = day.strftime("%Y-%m-%dT00:00:00Z")
     to = (day + dt.timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+
+    # 시즌 종료 후 마켓이 ~2주 잠기는 기간엔 전역 판매가 0이 된다.
+    # 요청 1개로 먼저 확인해서, 잠겨 있으면 2,422개 스윕을 통째로 건너뛴다.
+    # 마켓이 다시 열리면 자동으로 정상 수집이 재개된다.
+    probe = api_get("/v2/market", {"has_sold": "true", "from": frm, "to": to, "limit": 1})
+    global_total = (probe.get("pagination") or {}).get("total") or 0
+    if global_total < 10:
+        print("market locked/empty on %s (global sales=%d) — sweep skipped"
+              % (day, global_total), flush=True)
+        return {}
+
     result = {}
     errors = 0
 
