@@ -139,7 +139,7 @@ def collected_days():
 
 # DarkerDB 는 판매 기록을 대략 2~3주만 보관한다. 그보다 오래된 날은 조회해도 비어 있음.
 BACKFILL_WINDOW_DAYS = 15
-MAX_DAYS_PER_RUN = 4        # 하루 스윕이 약 43분 — 4일이면 Actions 6시간 제한 안에 안전
+MAX_DAYS_PER_RUN = 1        # 실행당 1일 — 끝날 때마다 하루치가 바로 커밋되어 사이트에 반영됨
 
 
 def refresh_patches():
