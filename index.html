@@ -243,7 +243,7 @@
       if (k.startsWith(t) || e.startsWith(t)) starts.push(id);
       else if (k.includes(t) || e.includes(t)) contains.push(id);
     }
-    const rank = { artifact: 0, unique: 1, legendary: 2, epic: 3, rare: 4, uncommon: 5, common: 6, poor: 7 };
+    const rank = { poor: 0, common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5, unique: 6, artifact: 7 };
     const byRar = (a, b) => (rank[CATALOG[a][2]] ?? 9) - (rank[CATALOG[b][2]] ?? 9) || CATALOG[a][0].localeCompare(CATALOG[b][0]);
     hitIds = starts.sort(byRar).concat(contains.sort(byRar)).slice(0, 30);
     hits.innerHTML = hitIds.map(id => {
