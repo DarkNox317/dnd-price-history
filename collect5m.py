@@ -94,7 +94,8 @@ def collect_day(day, item_id=None, max_pages=None):
     grabbed = 0
     for h in range(24):
         frm = base + dt.timedelta(hours=h)
-        to = base + dt.timedelta(hours=h + 1)
+        # API 의 from/to 는 둘 다 경계 포함 → to 를 1초 앞당겨 정각 거래의 이중 집계를 막는다
+        to = base + dt.timedelta(hours=h + 1, seconds=-1)
         n, total = sweep_window(frm, to, acc, item_id, max_pages)
         grabbed += n
         elapsed = (time.time() - t0) / 60
