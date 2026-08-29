@@ -1,8 +1,8 @@
 name: collect5m
 
 on:
-  schedule:
-    - cron: "23 */2 * * *"
+  # schedule:  (사이트 검증 완료 후 재활성화)
+  #   - cron: "23 */2 * * *"
   workflow_dispatch:
     inputs:
       date:

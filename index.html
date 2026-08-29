@@ -264,7 +264,7 @@
   async function boot () {
     const [cat, months, patches] = await Promise.all([
       fetch("catalog.json").then(r => r.json()),
-      fetch("data/months.json").then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch("data2/months.json").then(r => r.ok ? r.json() : []).catch(() => []),
       fetch("patches.json").then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
     CATALOG = cat; MONTHS = months; PATCHES = patches;
@@ -352,7 +352,7 @@
 
   async function loadMonth (m) {
     if (monthData[m] !== undefined) return monthData[m];
-    try { monthData[m] = await fetch("data/" + m + ".json").then(r => r.json()); }
+    try { monthData[m] = await fetch("data2/" + m + ".json").then(r => r.json()); }
     catch (e) { monthData[m] = {}; }
     return monthData[m];
   }

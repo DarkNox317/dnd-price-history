@@ -92,6 +92,13 @@ def collect_day(day, item_id=None, max_pages=None):
     t0 = time.time()
     base = dt.datetime(day.year, day.month, day.day)
     grabbed = 0
+    if item_id:
+        # 단일 아이템은 거래량이 적어 하루를 통째로 페이지네이션해도 얕다
+        frm = base
+        to = base + dt.timedelta(days=1, seconds=-1)
+        grabbed, total = sweep_window(frm, to, acc, item_id, max_pages)
+        print("  %s %s: %d건 수집 (전체 %d건)" % (day, item_id, grabbed, total), flush=True)
+        return acc, grabbed
     for h in range(24):
         frm = base + dt.timedelta(hours=h)
         # API 의 from/to 는 둘 다 경계 포함 → to 를 1초 앞당겨 정각 거래의 이중 집계를 막는다
@@ -126,7 +133,7 @@ def summarize(acc):
     return detail, daily
 
 
-def save(day, detail, daily):
+def save(day, detail, daily, merge=False):
     d5 = os.path.join(ROOT, "data5m")
     d2 = os.path.join(ROOT, "data2")
     os.makedirs(d5, exist_ok=True)
@@ -134,12 +141,19 @@ def save(day, detail, daily):
 
     daykey = day.strftime("%Y-%m-%d")
     p5 = os.path.join(d5, daykey + ".json")
+    if merge and os.path.exists(p5):
+        prev = json.load(open(p5, encoding="utf-8")).get("items") or {}
+        prev.update(detail)
+        detail = prev
     json.dump({"date": daykey, "items": detail}, open(p5, "w", encoding="utf-8"),
               separators=(",", ":"))
 
     p2 = os.path.join(d2, day.strftime("%Y-%m") + ".json")
     month = json.load(open(p2, encoding="utf-8")) if os.path.exists(p2) else {}
-    month[daykey] = daily
+    if merge and daykey in month:
+        month[daykey].update(daily)
+    else:
+        month[daykey] = daily
     json.dump(month, open(p2, "w", encoding="utf-8"), separators=(",", ":"))
 
     days = sorted(f[:-5] for f in os.listdir(d5) if f.endswith(".json"))
@@ -166,6 +180,8 @@ def main():
     ap.add_argument("--auto", action="store_true")
     ap.add_argument("--item-id")
     ap.add_argument("--max-pages", type=int)
+    ap.add_argument("--save", action="store_true",
+                    help="--item-id 모드에서도 결과를 저장 (기존 날짜 데이터에 병합)")
     args = ap.parse_args()
 
     if not KEY:
@@ -207,19 +223,20 @@ def main():
     print("done: %d건 수집, 아이템 %d종, 버킷 %d개"
           % (grabbed, len(detail), sum(len(v) for v in detail.values())), flush=True)
 
-    if args.item_id or args.max_pages:
+    if (args.item_id or args.max_pages) and not args.save:
         # 스모크 테스트: 저장하지 않고 결과만 출력
         print(json.dumps({"detail_sample": {k: v[:6] for k, v in list(detail.items())[:3]},
                           "daily": daily}, ensure_ascii=False, indent=1))
         return
 
-    save(day, detail, daily)
+    save(day, detail, daily, merge=bool(args.item_id))
 
-    try:
-        import collect as legacy
-        legacy.refresh_patches()
-    except Exception as e:
-        print("patches refresh skipped: %s" % str(e)[:80], flush=True)
+    if not args.item_id:
+        try:
+            import collect as legacy
+            legacy.refresh_patches()
+        except Exception as e:
+            print("patches refresh skipped: %s" % str(e)[:80], flush=True)
 
 
 if __name__ == "__main__":
