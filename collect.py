@@ -71,6 +71,7 @@ def collect_day(day, only=None):
 
     result = {}
     errors = 0
+    t0 = time.time()
 
     for i, item_id in enumerate(ids):
         try:
@@ -97,7 +98,11 @@ def collect_day(day, only=None):
             if errors <= 5:
                 print("  err %s: %s" % (item_id, str(e)[:80]), flush=True)
         if (i + 1) % 200 == 0:
-            print("  %d/%d (recorded %d)" % (i + 1, len(ids), len(result)), flush=True)
+            elapsed = time.time() - t0
+            eta_min = (len(ids) - i - 1) / ((i + 1) / elapsed) / 60
+            print("  [%s UTC] %d/%d 진행 (기록 %d개, 남은 시간 약 %d분)"
+                  % (dt.datetime.now(dt.timezone.utc).strftime("%H:%M:%S"),
+                     i + 1, len(ids), len(result), int(eta_min)), flush=True)
         time.sleep(REQUEST_GAP)
 
     print("done: %d items with sales, %d errors" % (len(result), errors), flush=True)

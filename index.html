@@ -45,6 +45,16 @@
     background: var(--accent); border-radius: 2px; margin-top: .5rem; }
   .sub { color: var(--ink-2); font-size: .88rem; margin: .6rem 0 0; }
 
+  .collect-status { margin: .55rem 0 0; font-size: .76rem; font-family: var(--mono);
+    color: var(--muted); display: flex; align-items: center; gap: .4rem; }
+  .collect-status .sdot { width: .55rem; height: .55rem; border-radius: 50%; flex: none; }
+  .collect-status .sdot.run { background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  .collect-status .sdot.good { background: var(--vol); }
+  .collect-status .sdot.bad { background: var(--mark); }
+  .collect-status a { color: var(--accent); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .collect-status .sdot.run { animation: none; } }
+
   #theme-toggle { position: fixed; top: 1rem; right: 1rem; z-index: 5;
     background: var(--surface); color: var(--ink-2); border: 1px solid var(--edge);
     border-radius: 4px; padding: .4rem .7rem; cursor: pointer;
@@ -164,6 +174,7 @@
   <p class="eyebrow">Dark and Darker</p>
   <h1>시세 기록<span class="season-chip" id="season-chip" hidden></span></h1>
   <p class="sub">아이템별 날짜 시세와 거래량, 그리고 패치·시즌이 가격에 준 영향까지.</p>
+  <p class="collect-status" id="collect-status" hidden></p>
 </header>
 
 <div class="topbar">
@@ -664,6 +675,28 @@
   function tile (k, v, cls) {
     return '<div class="tile"><div class="k">' + k + '</div><div class="v ' + (cls || "") + '">' + v + '</div></div>';
   }
+
+  /* ── 수집 작업 상태 (GitHub 공개 API — 누구나 조회 가능) ── */
+  async function fetchCollectStatus () {
+    const el = $("collect-status");
+    try {
+      const r = await fetch("https://api.github.com/repos/DarkNox317/dnd-price-history/actions/workflows/collect.yml/runs?per_page=1");
+      if (!r.ok) return;
+      const run = (await r.json()).workflow_runs?.[0];
+      if (!run) return;
+      const mins = Math.max(0, Math.round((Date.now() - new Date(run.run_started_at)) / 60000));
+      const ago = mins < 90 ? mins + "분" : Math.round(mins / 60) + "시간";
+      let dot, text;
+      if (run.status !== "completed") { dot = "run"; text = "수집 작업 실행 중 · " + ago + " 경과"; }
+      else if (run.conclusion === "success") { dot = "good"; text = "마지막 수집 성공 · " + ago + " 전"; }
+      else { dot = "bad"; text = "마지막 수집 " + (run.conclusion === "failure" ? "실패" : run.conclusion) + " · " + ago + " 전"; }
+      el.innerHTML = '<span class="sdot ' + dot + '"></span>' + text +
+        ' · <a href="' + run.html_url + '" target="_blank" rel="noopener">실시간 로그 보기</a>';
+      el.hidden = false;
+    } catch (e) { /* API 제한 등 — 조용히 생략 */ }
+  }
+  fetchCollectStatus();
+  setInterval(fetchCollectStatus, 120000);
 
   /* ── 테마 ── */
   const root = document.documentElement;
