@@ -614,7 +614,12 @@
     if (!rows.length) return;
 
     const meds = rows.map(r => r.med);
-    let lo = Math.min(...meds), hi = Math.max(...meds);
+    // 축 범위는 5~95 분위수로 — 트롤 매물(극단값) 한두 개가 축을 잡아먹지 않게.
+    // 범위를 벗어난 점은 위/아래 가장자리에 눌러 그리고, 실제 값은 호버 툴팁에 그대로 보임.
+    const srt = [...meds].sort((a, b) => a - b);
+    const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
+    let lo = quant(0.05), hi = quant(0.95);
+    if (!(hi > lo)) { lo = Math.min(...meds); hi = Math.max(...meds); }
     const pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.1);
     lo = Math.max(0, lo - pad); hi += pad;
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
@@ -622,7 +627,7 @@
     const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
     const sx = (i) => rows.length === 1 ? (P.l + W - P.r) / 2 :
       P.l + (i / (rows.length - 1)) * (W - P.l - P.r);
-    const sy = (v) => H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b);
+    const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
     const line = rows.map((r, i) => (i ? "L" : "M") + sx(i).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ");
     const area = line + " L" + sx(rows.length - 1).toFixed(1) + "," + (H - P.b) +
@@ -684,14 +689,15 @@
       '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + (intraday ? '건/5분' : '건/일') + '</text>' +
       vols + '</svg>';
 
-    // 요약 타일
-    const last = rows[rows.length - 1];
-    const firstMed = rows[0].med;
-    const change = firstMed > 0 ? (last.med - firstMed) / firstMed * 100 : 0;
+    // 요약 타일 — 변동/최근값은 양 끝 3개 지점의 중앙값으로 계산 (튀는 값 한 개에 안 흔들리게)
+    const k = Math.min(3, rows.length);
+    const startMed = median(rows.slice(0, k).map(r => r.med));
+    const endMed = median(rows.slice(-k).map(r => r.med));
+    const change = startMed > 0 ? (endMed - startMed) / startMed * 100 : 0;
     const tot = rows.reduce((s, r) => s + r.cnt, 0);
     const cls = change >= 3 ? "up" : change <= -3 ? "down" : "";
     tiles.innerHTML =
-      tile("최근 중앙값", fmtGold(last.med) + ' <small>골드</small>') +
+      tile("최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
       tile("기간 변동", fmtPct(change), cls) +
       tile("기간 최저", fmtGold(Math.min(...rows.map(r => r.min)))) +
       tile("기간 최고", fmtGold(Math.max(...rows.map(r => r.max)))) +
