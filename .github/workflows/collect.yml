@@ -1,0 +1,43 @@
+name: collect
+
+on:
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "UTC date YYYY-MM-DD (default: yesterday)"
+        required: false
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect prices
+        env:
+          DARKERDB_API_KEY: ${{ secrets.DARKERDB_API_KEY }}
+          COLLECT_DATE: ${{ inputs.date }}
+        run: python collect.py ${COLLECT_DATE:+--date $COLLECT_DATE} ${COLLECT_DATE:---auto}
+
+      - name: Commit data
+        run: |
+          git config user.name "DarkNox317"
+          git config user.email "DarkNox317@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "data: update"
+          git pull --rebase origin main
+          git push origin main
