@@ -124,6 +124,22 @@
 
   .empty { color: var(--muted); padding: 3rem 0; text-align: center; font-size: .92rem; line-height: 1.8; }
   .note { margin-top: 1.2rem; font-size: .74rem; color: var(--muted); line-height: 1.7; }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem; margin-top: 1rem; }
+  .cols h3 { margin: 0 0 .45rem; font-size: .76rem; font-family: var(--mono);
+    letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+  .li { display: flex; align-items: center; gap: .5rem; padding: .42rem .5rem;
+    border-radius: 6px; cursor: pointer; font-size: .87rem; }
+  .li:hover { background: var(--ground); }
+  .li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .li .val { margin-left: auto; font-family: var(--mono); font-size: .8rem;
+    font-variant-numeric: tabular-nums; color: var(--ink-2); flex: none; }
+  .li .val.up { color: var(--up); font-weight: 700; }
+  .li .val.down { color: var(--down); font-weight: 700; }
+  #btn-home { background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: .82rem; font-family: var(--sans); padding: .2rem .4rem; }
+  #btn-home:hover { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -142,9 +158,20 @@
 </div>
 
 <div class="panel" id="panel">
-  <div class="empty" id="placeholder">아이템을 검색해서 선택하면 시세 그래프가 나와.</div>
+  <div id="home">
+    <div class="empty" id="placeholder">아이템을 검색하거나, 데이터가 쌓이면 여기 요약이 표시돼.</div>
+    <div id="dash" hidden>
+      <div class="tiles" id="h_tiles"></div>
+      <div class="cols">
+        <div><h3>어제 거래량 TOP</h3><div id="h_vol"></div></div>
+        <div><h3>급등 (전일 대비)</h3><div id="h_up"></div></div>
+        <div><h3>급락 (전일 대비)</h3><div id="h_down"></div></div>
+      </div>
+    </div>
+  </div>
   <div id="view" hidden>
     <div class="item-head">
+      <button id="btn-home" type="button" title="홈으로">←</button>
       <span class="rdot" id="v_dot"></span>
       <h2 id="v_ko"></h2>
       <span class="en" id="v_en"></span>
@@ -217,8 +244,67 @@
     if (!MONTHS.length) {
       $("placeholder").innerHTML = "첫 수집이 아직 진행 중이야.<br>몇 시간 뒤에 다시 열면 데이터가 보이기 시작해.";
     }
-    const h = decodeURIComponent(location.hash.slice(1));
-    if (h && CATALOG[h]) selectItem(h);
+    // 새로고침하면 항상 홈으로 (주소에 남은 옛 아이템 해시는 제거)
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+    await renderHome();
+  }
+
+  /* ── 홈 대시보드 ── */
+  async function renderHome () {
+    if (!MONTHS.length) return;
+    // 최근 두 달치만 읽으면 어제/그제를 항상 커버함
+    const recent = MONTHS.slice(-2);
+    const dayMap = {};
+    for (const m of recent) {
+      const md = await loadMonth(m);
+      for (const d in md) dayMap[d] = md[d];
+    }
+    const dates = Object.keys(dayMap).sort();
+    const withData = dates.filter(d => Object.keys(dayMap[d]).length > 0);
+    if (!withData.length) return;
+
+    const L = withData[withData.length - 1];             // 최신 수집일
+    const Pd = withData.length > 1 ? withData[withData.length - 2] : null;
+    const day = dayMap[L];
+    const ids = Object.keys(day);
+
+    const totCnt = ids.reduce((s, id) => s + day[id][3], 0);
+    $("h_tiles").innerHTML =
+      tile("최근 수집일", L.slice(5).replace("-", "/")) +
+      tile("기록된 일수", withData.length + ' <small>일</small>') +
+      tile("그날 거래", totCnt.toLocaleString() + ' <small>건</small>') +
+      tile("거래된 아이템", ids.length.toLocaleString() + ' <small>종</small>');
+
+    const li = (id, valHtml) => {
+      const [ko, , rar] = CATALOG[id] || [id, "", ""];
+      return '<div class="li" data-id="' + id + '">' +
+        '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
+        '<span class="nm">' + ko + '</span>' + valHtml + '</div>';
+    };
+
+    const topVol = [...ids].sort((a, b) => day[b][3] - day[a][3]).slice(0, 8);
+    $("h_vol").innerHTML = topVol.map(id =>
+      li(id, '<span class="val">' + day[id][3].toLocaleString() + '건 · ' + fmtGold(day[id][0]) + '</span>')).join("");
+
+    let ups = [], downs = [];
+    if (Pd) {
+      const prev = dayMap[Pd];
+      const movers = ids
+        .filter(id => prev[id] && prev[id][3] >= 5 && day[id][3] >= 5 && prev[id][0] > 0)
+        .map(id => ({ id, pct: (day[id][0] - prev[id][0]) / prev[id][0] * 100 }));
+      movers.sort((a, b) => b.pct - a.pct);
+      ups = movers.filter(m => m.pct >= 3).slice(0, 6);
+      downs = movers.filter(m => m.pct <= -3).slice(-6).reverse();
+    }
+    $("h_up").innerHTML = ups.length ? ups.map(m =>
+      li(m.id, '<span class="val up">' + fmtPct(m.pct) + '</span>')).join("") :
+      '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
+    $("h_down").innerHTML = downs.length ? downs.map(m =>
+      li(m.id, '<span class="val down">' + fmtPct(m.pct) + '</span>')).join("") :
+      '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
+
+    $("placeholder").hidden = true;
+    $("dash").hidden = false;
   }
 
   async function loadMonth (m) {
@@ -267,14 +353,25 @@
   });
   document.addEventListener("click", (ev) => { if (!ev.target.closest(".searchbox")) hits.innerHTML = ""; });
 
+  // 홈 대시보드 목록 클릭 → 해당 아이템, ← 버튼 → 홈
+  document.getElementById("home").addEventListener("click", (ev) => {
+    const el = ev.target.closest(".li");
+    if (el && el.dataset.id) selectItem(el.dataset.id);
+  });
+  document.getElementById("btn-home").addEventListener("click", () => {
+    currentItem = null;
+    q.value = "";
+    $("view").hidden = true;
+    $("home").hidden = false;
+  });
+
   /* ── 선택·범위 ── */
   async function selectItem (id) {
     currentItem = id;
-    location.hash = encodeURIComponent(id);
     hits.innerHTML = "";
     const [ko, en, rar] = CATALOG[id];
     q.value = ko;
-    $("placeholder").hidden = true;
+    $("home").hidden = true;
     $("view").hidden = false;
     $("v_ko").textContent = ko;
     $("v_en").textContent = en;
