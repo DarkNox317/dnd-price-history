@@ -52,7 +52,21 @@
   #theme-toggle:hover { border-color: var(--accent); color: var(--ink); }
   #theme-toggle:focus-visible, .rng:focus-visible, #q:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .searchbox { position: relative; margin-bottom: 1.1rem; }
+  .topbar { display: flex; gap: .6rem; margin-bottom: 1.1rem; align-items: stretch; }
+  .searchbox { position: relative; flex: 1; min-width: 0; }
+  #rsel { flex: none; width: 9.5rem; padding: 0 .8rem; font-size: .9rem;
+    background: var(--surface); color: var(--ink); font-family: var(--sans);
+    border: 1px solid var(--edge); border-radius: 8px; box-shadow: var(--shadow); cursor: pointer; }
+  #rsel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 560px) { .topbar { flex-wrap: wrap; } #rsel { width: 100%; padding: .6rem .8rem; } }
+  .rswitch { display: flex; gap: .35rem; flex-wrap: wrap; margin-left: auto; }
+  .rsw { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+    border: 1px solid var(--edge); border-radius: 999px; padding: .14rem .6rem;
+    font-size: .74rem; color: var(--ink-2); background: var(--ground); font-family: var(--sans); }
+  .rsw[data-on="1"] { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+  .rsw .rdot { width: .5rem; height: .5rem; }
+  .hitdots { display: inline-flex; gap: .2rem; margin-left: .45rem; }
+  .hitdots .rdot { width: .45rem; height: .45rem; }
   #q { width: 100%; padding: .85rem 1rem .85rem 2.6rem; font-size: 1.02rem;
     background: var(--surface); color: var(--ink);
     border: 1px solid var(--edge); border-radius: 8px; font-family: var(--sans);
@@ -152,9 +166,22 @@
   <p class="sub">아이템별 날짜 시세와 거래량, 그리고 패치·시즌이 가격에 준 영향까지.</p>
 </header>
 
-<div class="searchbox">
-  <input id="q" type="search" placeholder="아이템 검색 — 한글·영문 (예: 화염구, Torq)" autocomplete="off">
-  <div id="hits"></div>
+<div class="topbar">
+  <div class="searchbox">
+    <input id="q" type="search" placeholder="아이템 이름 — 한글·영문" autocomplete="off">
+    <div id="hits"></div>
+  </div>
+  <select id="rsel" title="희귀도">
+    <option value="all">희귀도: 전체</option>
+    <option value="poor">초라한</option>
+    <option value="common">일반적인</option>
+    <option value="uncommon">고급</option>
+    <option value="rare">희귀한</option>
+    <option value="epic">서사적인</option>
+    <option value="legendary">전설적인</option>
+    <option value="unique">유일한</option>
+    <option value="artifact">유물</option>
+  </select>
 </div>
 
 <div class="panel" id="panel">
@@ -175,7 +202,7 @@
       <span class="rdot" id="v_dot"></span>
       <h2 id="v_ko"></h2>
       <span class="en" id="v_en"></span>
-      <span class="rar" id="v_rar"></span>
+      <span class="rswitch" id="v_rswitch"></span>
     </div>
     <div class="ranges" id="ranges">
       <button class="rng" data-d="14" data-on="1" type="button">2주</button>
@@ -230,6 +257,7 @@
       fetch("patches.json").then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
     CATALOG = cat; MONTHS = months; PATCHES = patches;
+    buildNameIndex();
     // 시즌 목록 (kind === "season", 시작일 오름차순) + 현재 시즌 배지
     SEASONS = PATCHES.filter(p => p.kind === "season" && p.date)
       .map(p => ({ ...p, num: (p.title.match(/#(\d+)/) || [])[1] || "?" }))
@@ -318,42 +346,79 @@
     return monthData[m];
   }
 
-  /* ── 검색 ── */
-  const q = $("q"), hits = $("hits");
-  let hitIds = [], hitSel = -1;
+  /* ── 검색: 이름당 한 줄, 희귀도는 별도 선택 ── */
+  const q = $("q"), hits = $("hits"), rsel = $("rsel");
+  const RANK = { poor: 0, common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5, unique: 6, artifact: 7 };
+  let NAME_INDEX = [];          // [{ko, en, variants: [{id, rar}]}]
+  let hitGroups = [], hitSel = -1;
+
+  function buildNameIndex () {
+    const map = new Map();
+    for (const id in CATALOG) {
+      const [ko, en, rar] = CATALOG[id];
+      const key = ko + "|" + en;
+      if (!map.has(key)) map.set(key, { ko, en, variants: [] });
+      map.get(key).variants.push({ id, rar: rar || "" });
+    }
+    for (const g of map.values()) {
+      g.variants.sort((a, b) => (RANK[a.rar] ?? 9) - (RANK[b.rar] ?? 9));
+    }
+    NAME_INDEX = [...map.values()];
+  }
+
+  function resolveId (group) {
+    const r = rsel.value;
+    if (r !== "all") {
+      const v = group.variants.find(v => v.rar === r);
+      if (v) return v.id;
+    }
+    return group.variants[0].id;      // 전체면 가장 낮은 등급부터
+  }
 
   function search (text) {
     const t = text.trim().toLowerCase();
-    hits.innerHTML = ""; hitIds = []; hitSel = -1;
+    hits.innerHTML = ""; hitGroups = []; hitSel = -1;
     if (!t) return;
+    const r = rsel.value;
     const starts = [], contains = [];
-    for (const id in CATALOG) {
-      const [ko, en] = CATALOG[id];
-      const k = ko.toLowerCase(), e = en.toLowerCase();
-      if (k.startsWith(t) || e.startsWith(t)) starts.push(id);
-      else if (k.includes(t) || e.includes(t)) contains.push(id);
+    for (const g of NAME_INDEX) {
+      if (r !== "all" && !g.variants.some(v => v.rar === r)) continue;
+      const k = g.ko.toLowerCase(), e = g.en.toLowerCase();
+      if (k.startsWith(t) || e.startsWith(t)) starts.push(g);
+      else if (k.includes(t) || e.includes(t)) contains.push(g);
     }
-    const rank = { poor: 0, common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5, unique: 6, artifact: 7 };
-    const byRar = (a, b) => (rank[CATALOG[a][2]] ?? 9) - (rank[CATALOG[b][2]] ?? 9) || CATALOG[a][0].localeCompare(CATALOG[b][0]);
-    hitIds = starts.sort(byRar).concat(contains.sort(byRar)).slice(0, 30);
-    hits.innerHTML = hitIds.map(id => {
-      const [ko, en, rar] = CATALOG[id];
-      return '<div class="hit" data-id="' + id + '">' +
-        '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
-        '<span>' + ko + '</span><span class="en">' + en + (rar ? "<br>" + (RARITY_KO[rar] || rar) : "") + '</span></div>';
+    const byName = (a, b) => a.ko.localeCompare(b.ko);
+    hitGroups = starts.sort(byName).concat(contains.sort(byName)).slice(0, 30);
+    hits.innerHTML = hitGroups.map((g, i) => {
+      const dots = g.variants.map(v =>
+        '<span class="rdot" style="background:' + (RARITY_COLOR[v.rar] || "#999") + '"></span>').join("");
+      return '<div class="hit" data-i="' + i + '">' +
+        '<span class="nm">' + g.ko + '</span>' +
+        '<span class="hitdots">' + dots + '</span>' +
+        '<span class="en">' + g.en + '</span></div>';
     }).join("");
   }
+
   q.addEventListener("input", () => search(q.value));
+  rsel.addEventListener("change", () => {
+    if (q.value.trim()) search(q.value);
+    // 아이템을 보고 있는 중이면 같은 이름의 해당 등급으로 즉시 전환
+    if (currentItem && rsel.value !== "all") {
+      const g = NAME_INDEX.find(g => g.variants.some(v => v.id === currentItem));
+      const v = g && g.variants.find(v => v.rar === rsel.value);
+      if (v && v.id !== currentItem) selectItem(v.id);
+    }
+  });
   q.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && hitIds.length) selectItem(hitIds[Math.max(0, hitSel)]);
-    if (ev.key === "ArrowDown") { hitSel = Math.min(hitIds.length - 1, hitSel + 1); paintSel(); ev.preventDefault(); }
+    if (ev.key === "Enter" && hitGroups.length) selectItem(resolveId(hitGroups[Math.max(0, hitSel)]));
+    if (ev.key === "ArrowDown") { hitSel = Math.min(hitGroups.length - 1, hitSel + 1); paintSel(); ev.preventDefault(); }
     if (ev.key === "ArrowUp") { hitSel = Math.max(0, hitSel - 1); paintSel(); ev.preventDefault(); }
     if (ev.key === "Escape") hits.innerHTML = "";
   });
   function paintSel () { [...hits.children].forEach((el, i) => el.classList.toggle("on", i === hitSel)); }
   hits.addEventListener("click", (ev) => {
     const el = ev.target.closest(".hit");
-    if (el) selectItem(el.dataset.id);
+    if (el) selectItem(resolveId(hitGroups[+el.dataset.i]));
   });
   document.addEventListener("click", (ev) => { if (!ev.target.closest(".searchbox")) hits.innerHTML = ""; });
 
@@ -379,10 +444,22 @@
     $("view").hidden = false;
     $("v_ko").textContent = ko;
     $("v_en").textContent = en;
-    $("v_rar").textContent = RARITY_KO[rar] || rar || "—";
     $("v_dot").style.background = RARITY_COLOR[rar] || "#999";
+
+    // 같은 이름의 다른 등급으로 바로 전환하는 칩
+    const grp = NAME_INDEX.find(g => g.variants.some(v => v.id === id));
+    $("v_rswitch").innerHTML = (grp ? grp.variants : []).map(v =>
+      '<span class="rsw" data-id="' + v.id + '" data-on="' + (v.id === id ? 1 : 0) + '">' +
+      '<span class="rdot" style="background:' + (RARITY_COLOR[v.rar] || "#999") + '"></span>' +
+      (RARITY_KO[v.rar] || v.rar || "기본") + '</span>').join("");
+
     await render();
   }
+
+  $("v_rswitch").addEventListener("click", (ev) => {
+    const el = ev.target.closest(".rsw");
+    if (el && el.dataset.id !== currentItem) selectItem(el.dataset.id);
+  });
 
   $("ranges").addEventListener("click", async (ev) => {
     const b = ev.target.closest(".rng");
