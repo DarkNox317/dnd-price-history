@@ -131,6 +131,33 @@ BACKFILL_WINDOW_DAYS = 15
 MAX_DAYS_PER_RUN = 4        # 하루 스윕이 약 43분 — 4일이면 Actions 6시간 제한 안에 안전
 
 
+def refresh_patches():
+    """패치 목록(이름·배포일)을 patches.json 으로 갱신. 차트의 패치 마커에 쓰인다."""
+    rows = []
+    try:
+        page = 1
+        while page <= 20:
+            d = api_get("/v2/patches", {"limit": 50, "page": page})
+            batch = d.get("body") or []
+            rows.extend(batch)
+            total = (d.get("pagination") or {}).get("total") or 0
+            if not batch or len(rows) >= total:
+                break
+            page += 1
+            time.sleep(0.5)
+        out = [
+            {"slug": r.get("slug"), "title": r.get("title"),
+             "date": r.get("released_at"), "kind": r.get("kind")}
+            for r in rows if r.get("released_at")
+        ]
+        out.sort(key=lambda r: r["date"], reverse=True)
+        json.dump(out, open(os.path.join(ROOT, "patches.json"), "w", encoding="utf-8"),
+                  ensure_ascii=False, separators=(",", ":"))
+        print("patches.json refreshed: %d entries" % len(out), flush=True)
+    except Exception as e:
+        print("patches refresh failed: %s" % str(e)[:100], flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="특정 UTC 날짜 하루만 수집")
@@ -167,6 +194,8 @@ def main():
         print("collecting UTC day: %s" % day, flush=True)
         data = collect_day(day, args.only)
         save(day, data)
+
+    refresh_patches()
 
 
 if __name__ == "__main__":

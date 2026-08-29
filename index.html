@@ -10,7 +10,9 @@
   :root {
     --ground: #f7f5f0; --surface: #fcfcfb; --edge: #ddd8cc;
     --ink: #211f1b; --ink-2: #4a453d; --muted: #6b655b;
-    --accent: #a8761c; --vol: #008a72; --grid: #e6e1d5;
+    --accent: #a8761c; --vol: #008a72; --grid: #ece7db;
+    --up: #a8353b; --down: #2f6d9e; --mark: #a8353b;
+    --shadow: 0 10px 30px rgba(60, 50, 20, .08);
     --mono: "Cascadia Mono", "Consolas", monospace;
     --sans: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
   }
@@ -18,71 +20,107 @@
     :root:not([data-theme="light"]) {
       --ground: #12110f; --surface: #1a1917; --edge: #322f2a;
       --ink: #e6e1d6; --ink-2: #b8b1a3; --muted: #8f887b;
-      --accent: #b8842a; --vol: #0d9683; --grid: #262421;
+      --accent: #b8842a; --vol: #0d9683; --grid: #24221e;
+      --up: #d16a71; --down: #6c98d8; --mark: #b83f47;
+      --shadow: 0 10px 30px rgba(0, 0, 0, .35);
     }
   }
   :root[data-theme="dark"] {
     --ground: #12110f; --surface: #1a1917; --edge: #322f2a;
     --ink: #e6e1d6; --ink-2: #b8b1a3; --muted: #8f887b;
-    --accent: #b8842a; --vol: #0d9683; --grid: #262421;
+    --accent: #b8842a; --vol: #0d9683; --grid: #24221e;
+    --up: #d16a71; --down: #6c98d8; --mark: #b83f47;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .35);
   }
 
   body { margin: 0; background: var(--ground); color: var(--ink);
-    font-family: var(--sans); line-height: 1.55; padding: 1.5rem 1rem 4rem; }
-  .wrap { max-width: 56rem; margin: 0 auto; }
-  header { margin-bottom: 1.2rem; padding-right: 6.5rem; }
-  .eyebrow { font-family: var(--mono); font-size: .7rem; letter-spacing: .14em;
-    text-transform: uppercase; color: var(--muted); margin: 0 0 .3rem; }
-  h1 { font-size: 1.6rem; margin: 0; letter-spacing: -.01em; }
-  .sub { color: var(--ink-2); font-size: .85rem; margin: .4rem 0 0; }
+    font-family: var(--sans); line-height: 1.55; padding: 2rem 1rem 4rem; }
+  .wrap { max-width: 58rem; margin: 0 auto; }
+
+  header { margin-bottom: 1.4rem; padding-right: 6.5rem; }
+  .eyebrow { font-family: var(--mono); font-size: .68rem; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 .35rem; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.1rem); margin: 0; letter-spacing: -.015em; }
+  h1::after { content: ""; display: block; width: 3.2rem; height: 3px;
+    background: var(--accent); border-radius: 2px; margin-top: .5rem; }
+  .sub { color: var(--ink-2); font-size: .88rem; margin: .6rem 0 0; }
 
   #theme-toggle { position: fixed; top: 1rem; right: 1rem; z-index: 5;
     background: var(--surface); color: var(--ink-2); border: 1px solid var(--edge);
-    border-radius: 3px; padding: .4rem .7rem; cursor: pointer;
+    border-radius: 4px; padding: .4rem .7rem; cursor: pointer;
     font-family: var(--mono); font-size: .7rem; }
-  #theme-toggle:hover { border-color: var(--ink-2); color: var(--ink); }
+  #theme-toggle:hover { border-color: var(--accent); color: var(--ink); }
+  #theme-toggle:focus-visible, .rng:focus-visible, #q:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .searchbox { position: relative; margin-bottom: 1rem; }
-  #q { width: 100%; padding: .7rem .9rem; font-size: 1rem;
+  .searchbox { position: relative; margin-bottom: 1.1rem; }
+  #q { width: 100%; padding: .85rem 1rem .85rem 2.6rem; font-size: 1.02rem;
     background: var(--surface); color: var(--ink);
-    border: 1px solid var(--edge); border-radius: 4px; font-family: var(--sans); }
-  #q:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  #hits { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 10;
-    background: var(--surface); border: 1px solid var(--edge); border-radius: 4px;
-    max-height: 21rem; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+    border: 1px solid var(--edge); border-radius: 8px; font-family: var(--sans);
+    box-shadow: var(--shadow); }
+  .searchbox::before { content: "⌕"; position: absolute; left: .95rem; top: 50%;
+    transform: translateY(-54%); font-size: 1.25rem; color: var(--muted); pointer-events: none; }
+  #hits { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 10;
+    background: var(--surface); border: 1px solid var(--edge); border-radius: 8px;
+    max-height: 22rem; overflow-y: auto; box-shadow: var(--shadow); }
   #hits:empty { display: none; }
-  .hit { display: flex; align-items: center; gap: .55rem; padding: .5rem .8rem;
-    cursor: pointer; font-size: .92rem; }
+  .hit { display: flex; align-items: center; gap: .6rem; padding: .55rem .9rem;
+    cursor: pointer; font-size: .93rem; }
+  .hit + .hit { border-top: 1px solid var(--grid); }
   .hit:hover, .hit.on { background: var(--ground); }
-  .hit .en { color: var(--muted); font-size: .78rem; margin-left: auto; font-family: var(--mono); }
-  .rdot { width: .6rem; height: .6rem; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.2); }
+  .hit .en { color: var(--muted); font-size: .76rem; margin-left: auto;
+    font-family: var(--mono); text-align: right; }
+  .rdot { width: .62rem; height: .62rem; border-radius: 50%; flex: none;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
 
-  .panel { background: var(--surface); border: 1px solid var(--edge); border-radius: 4px;
-    padding: 1rem 1rem .8rem; }
-  .item-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin-bottom: .3rem; }
-  .item-head h2 { margin: 0; font-size: 1.15rem; }
+  .panel { background: var(--surface); border: 1px solid var(--edge); border-radius: 10px;
+    padding: 1.2rem 1.2rem 1rem; box-shadow: var(--shadow); }
+
+  .item-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .item-head h2 { margin: 0; font-size: 1.3rem; letter-spacing: -.01em; }
   .item-head .en { color: var(--muted); font-family: var(--mono); font-size: .78rem; }
-  .item-head .rar { font-size: .75rem; color: var(--ink-2); border: 1px solid var(--edge);
-    border-radius: 999px; padding: .1rem .55rem; }
+  .item-head .rar { font-size: .74rem; color: var(--ink-2); border: 1px solid var(--edge);
+    border-radius: 999px; padding: .12rem .6rem; margin-left: auto; }
 
-  .ranges { display: flex; gap: .4rem; margin: .6rem 0 .8rem; flex-wrap: wrap; }
+  .ranges { display: flex; gap: .4rem; margin: .9rem 0 1rem; flex-wrap: wrap; }
   .rng { background: var(--ground); border: 1px solid var(--edge); border-radius: 999px;
-    padding: .25rem .8rem; cursor: pointer; font-size: .8rem; color: var(--ink-2);
+    padding: .3rem .95rem; cursor: pointer; font-size: .8rem; color: var(--ink-2);
     font-family: var(--sans); }
-  .rng[data-on="1"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .rng[data-on="1"] { background: var(--accent); border-color: var(--accent);
+    color: var(--surface); font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: .55rem; margin-bottom: 1rem; }
+  .tile { background: var(--ground); border: 1px solid var(--grid); border-radius: 8px;
+    padding: .55rem .75rem; }
+  .tile .k { font-size: .7rem; color: var(--muted); letter-spacing: .04em; }
+  .tile .v { font-family: var(--mono); font-size: 1.15rem; font-weight: 700;
+    color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .tile .v.up { color: var(--up); }
+  .tile .v.down { color: var(--down); }
+  .tile .v small { font-size: .7rem; font-weight: 400; color: var(--muted); }
 
   figure { margin: 0; position: relative; }
   svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .tip { position: absolute; pointer-events: none; background: var(--ground);
-    border: 1px solid var(--edge); border-radius: 3px; padding: .35rem .55rem;
+  .tip { position: absolute; pointer-events: none; background: var(--surface);
+    border: 1px solid var(--edge); border-radius: 6px; padding: .45rem .65rem;
     font-family: var(--mono); font-size: .72rem; color: var(--ink);
-    white-space: pre; opacity: 0; z-index: 5; line-height: 1.5; }
+    white-space: pre; opacity: 0; z-index: 5; line-height: 1.55; box-shadow: var(--shadow); }
 
-  .stats { display: flex; gap: 1.4rem; flex-wrap: wrap; margin-top: .6rem;
-    font-family: var(--mono); font-size: .8rem; color: var(--ink-2); }
-  .stats b { color: var(--ink); font-size: 1rem; }
-  .empty { color: var(--muted); padding: 2.5rem 0; text-align: center; font-size: .9rem; }
-  .note { margin-top: 1.1rem; font-size: .75rem; color: var(--muted); line-height: 1.6; }
+  .patches { margin-top: 1.1rem; border-top: 1px solid var(--grid); padding-top: .9rem; }
+  .patches h3 { margin: 0 0 .55rem; font-size: .8rem; font-family: var(--mono);
+    letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+  .pt { display: flex; align-items: baseline; gap: .6rem; padding: .32rem 0;
+    font-size: .86rem; flex-wrap: wrap; }
+  .pt .d { font-family: var(--mono); font-size: .74rem; color: var(--muted); flex: none; }
+  .pt .t { color: var(--ink); font-weight: 600; flex: none; }
+  .pt .delta { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .pt .delta.up { color: var(--up); }
+  .pt .delta.down { color: var(--down); }
+  .pt .delta.flat { color: var(--muted); font-weight: 400; }
+  .pt .desc { color: var(--ink-2); font-size: .8rem; }
+
+  .empty { color: var(--muted); padding: 3rem 0; text-align: center; font-size: .92rem; line-height: 1.8; }
+  .note { margin-top: 1.2rem; font-size: .74rem; color: var(--muted); line-height: 1.7; }
 </style>
 </head>
 <body>
@@ -90,18 +128,18 @@
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">Dark and Darker · Price History</p>
+  <p class="eyebrow">Dark and Darker</p>
   <h1>시세 기록</h1>
-  <p class="sub">아이템을 검색하면 날짜별 판매 시세(중앙값)와 거래량을 보여줘.</p>
+  <p class="sub">아이템별 날짜 시세와 거래량, 그리고 패치가 가격에 준 영향까지.</p>
 </header>
 
 <div class="searchbox">
-  <input id="q" type="search" placeholder="아이템 검색 (한글/영문)" autocomplete="off">
+  <input id="q" type="search" placeholder="아이템 검색 — 한글·영문 (예: 화염구, Torq)" autocomplete="off">
   <div id="hits"></div>
 </div>
 
 <div class="panel" id="panel">
-  <div class="empty" id="placeholder">위에서 아이템을 검색해서 선택해줘.</div>
+  <div class="empty" id="placeholder">아이템을 검색해서 선택하면 시세 그래프가 나와.</div>
   <div id="view" hidden>
     <div class="item-head">
       <span class="rdot" id="v_dot"></span>
@@ -115,18 +153,23 @@
       <button class="rng" data-d="90" type="button">3달</button>
       <button class="rng" data-d="0" type="button">전체</button>
     </div>
+    <div class="tiles" id="tiles"></div>
     <figure>
       <div id="chart"></div>
       <div class="tip" id="tip"></div>
     </figure>
-    <div class="stats" id="stats"></div>
     <div class="empty" id="nodata" hidden>이 기간에 판매 기록이 없어.</div>
+    <div class="patches" id="patchbox" hidden>
+      <h3>패치 영향 · 자동 분석</h3>
+      <div id="patchlist"></div>
+    </div>
   </div>
 </div>
 
 <p class="note">
-  하루 1회 수집 (UTC 자정 기준 전날 판매분) · 가격은 개당 판매가의 <b>중앙값</b>, 거래량은 그날 판매 건수 ·
-  가장 비싸게/싸게 팔린 값은 점 위에 마우스를 올리면 표시 · 데이터 출처: DarkerDB
+  하루 1회 수집(UTC 기준 전날 판매분) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 그날 판매 건수 ·
+  차트의 세로 점선은 패치 배포일 · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
+  데이터 출처: DarkerDB
 </p>
 
 </div>
@@ -143,30 +186,31 @@
     epic: "서사적인", legendary: "전설적인", unique: "유일한", artifact: "유물"
   };
 
-  let CATALOG = {};        // id -> [ko, en, rarity]
-  let MONTHS = [];         // ["2026-08", ...]
-  const monthData = {};    // "2026-08" -> {date -> {id -> [med,min,max,cnt]}}
-  let currentItem = null;
-  let currentDays = 14;
+  let CATALOG = {}, MONTHS = [], PATCHES = [];
+  const monthData = {};
+  let currentItem = null, currentDays = 14;
 
-  const fmtGold = (v) => v >= 10000 ? (Math.round(v / 100) / 10) + "k" : Math.round(v).toLocaleString();
+  const fmtGold = (v) => v >= 10000 ? (Math.round(v / 100) / 10).toLocaleString() + "k" : Math.round(v).toLocaleString();
+  const fmtPct = (p) => (p > 0 ? "+" : "") + (Math.round(p * 10) / 10) + "%";
 
   async function boot () {
-    const [cat, months] = await Promise.all([
+    const [cat, months, patches] = await Promise.all([
       fetch("catalog.json").then(r => r.json()),
       fetch("data/months.json").then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch("patches.json").then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
-    CATALOG = cat;
-    MONTHS = months;
+    CATALOG = cat; MONTHS = months; PATCHES = patches;
+    if (!MONTHS.length) {
+      $("placeholder").innerHTML = "첫 수집이 아직 진행 중이야.<br>몇 시간 뒤에 다시 열면 데이터가 보이기 시작해.";
+    }
     const h = decodeURIComponent(location.hash.slice(1));
     if (h && CATALOG[h]) selectItem(h);
   }
 
   async function loadMonth (m) {
     if (monthData[m] !== undefined) return monthData[m];
-    try {
-      monthData[m] = await fetch("data/" + m + ".json").then(r => r.json());
-    } catch (e) { monthData[m] = {}; }
+    try { monthData[m] = await fetch("data/" + m + ".json").then(r => r.json()); }
+    catch (e) { monthData[m] = {}; }
     return monthData[m];
   }
 
@@ -177,40 +221,37 @@
   function search (text) {
     const t = text.trim().toLowerCase();
     hits.innerHTML = ""; hitIds = []; hitSel = -1;
-    if (t.length < 1) return;
+    if (!t) return;
     const starts = [], contains = [];
     for (const id in CATALOG) {
       const [ko, en] = CATALOG[id];
       const k = ko.toLowerCase(), e = en.toLowerCase();
       if (k.startsWith(t) || e.startsWith(t)) starts.push(id);
       else if (k.includes(t) || e.includes(t)) contains.push(id);
-      if (starts.length > 40) break;
     }
-    hitIds = starts.concat(contains).slice(0, 30);
+    const rank = { artifact: 0, unique: 1, legendary: 2, epic: 3, rare: 4, uncommon: 5, common: 6, poor: 7 };
+    const byRar = (a, b) => (rank[CATALOG[a][2]] ?? 9) - (rank[CATALOG[b][2]] ?? 9) || CATALOG[a][0].localeCompare(CATALOG[b][0]);
+    hitIds = starts.sort(byRar).concat(contains.sort(byRar)).slice(0, 30);
     hits.innerHTML = hitIds.map(id => {
       const [ko, en, rar] = CATALOG[id];
       return '<div class="hit" data-id="' + id + '">' +
         '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
-        '<span>' + ko + '</span><span class="en">' + en + (rar ? " · " + rar : "") + '</span></div>';
+        '<span>' + ko + '</span><span class="en">' + en + (rar ? "<br>" + (RARITY_KO[rar] || rar) : "") + '</span></div>';
     }).join("");
   }
   q.addEventListener("input", () => search(q.value));
   q.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && hitIds.length) { selectItem(hitIds[Math.max(0, hitSel)]); }
+    if (ev.key === "Enter" && hitIds.length) selectItem(hitIds[Math.max(0, hitSel)]);
     if (ev.key === "ArrowDown") { hitSel = Math.min(hitIds.length - 1, hitSel + 1); paintSel(); ev.preventDefault(); }
     if (ev.key === "ArrowUp") { hitSel = Math.max(0, hitSel - 1); paintSel(); ev.preventDefault(); }
-    if (ev.key === "Escape") { hits.innerHTML = ""; }
+    if (ev.key === "Escape") hits.innerHTML = "";
   });
-  function paintSel () {
-    [...hits.children].forEach((el, i) => el.classList.toggle("on", i === hitSel));
-  }
+  function paintSel () { [...hits.children].forEach((el, i) => el.classList.toggle("on", i === hitSel)); }
   hits.addEventListener("click", (ev) => {
     const el = ev.target.closest(".hit");
     if (el) selectItem(el.dataset.id);
   });
-  document.addEventListener("click", (ev) => {
-    if (!ev.target.closest(".searchbox")) hits.innerHTML = "";
-  });
+  document.addEventListener("click", (ev) => { if (!ev.target.closest(".searchbox")) hits.innerHTML = ""; });
 
   /* ── 선택·범위 ── */
   async function selectItem (id) {
@@ -236,7 +277,6 @@
     await render();
   });
 
-  /* ── 시리즈 구성 ── */
   async function buildSeries () {
     const rows = [];
     for (const m of MONTHS) {
@@ -254,14 +294,50 @@
     return rows;
   }
 
+  /* ── 패치 영향 분석 ── */
+  function analyzePatches (rows) {
+    if (rows.length < 2) return [];
+    const first = rows[0].date, last = rows[rows.length - 1].date;
+    const byDate = Object.fromEntries(rows.map(r => [r.date, r]));
+    const out = [];
+    for (const p of PATCHES) {
+      if (!p.date || p.date < first || p.date > last) continue;
+      const before = [], after = [];
+      for (let k = 1; k <= 4; k++) {
+        const bd = shiftDate(p.date, -k), ad = shiftDate(p.date, k - 1);
+        if (byDate[bd] && before.length < 3) before.push(byDate[bd].med);
+        if (byDate[ad] && after.length < 3) after.push(byDate[ad].med);
+      }
+      let delta = null;
+      if (before.length && after.length) {
+        const b = median(before), a = median(after);
+        if (b > 0) delta = (a - b) / b * 100;
+      }
+      out.push({ ...p, delta });
+    }
+    return out.reverse();   // 과거 → 최신 순
+  }
+  const shiftDate = (d, n) => new Date(new Date(d + "T00:00:00Z").getTime() + n * 864e5).toISOString().slice(0, 10);
+  const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+  function deltaWord (d) {
+    if (d === null) return ["데이터 부족", "flat"];
+    if (d >= 15) return ["급등", "up"];
+    if (d >= 5) return ["상승", "up"];
+    if (d <= -15) return ["급락", "down"];
+    if (d <= -5) return ["하락", "down"];
+    return ["큰 변동 없음", "flat"];
+  }
+
   /* ── 차트 ── */
-  const W = 720, H = 260, VH = 64, P = { t: 12, r: 14, b: 22, l: 52 };
+  const W = 720, H = 270, VH = 66, P = { t: 16, r: 14, b: 22, l: 54 };
 
   async function render () {
     const rows = await buildSeries();
-    const chart = $("chart"), tip = $("tip"), stats = $("stats");
+    const chart = $("chart"), tip = $("tip"), tiles = $("tiles");
     $("nodata").hidden = rows.length > 0;
-    stats.innerHTML = ""; chart.innerHTML = "";
+    tiles.innerHTML = ""; chart.innerHTML = "";
+    $("patchbox").hidden = true;
     if (!rows.length) return;
 
     const meds = rows.map(r => r.med);
@@ -270,7 +346,8 @@
     lo = Math.max(0, lo - pad); hi += pad;
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
-    const sx = (i) => rows.length === 1 ? W / 2 :
+    const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
+    const sx = (i) => rows.length === 1 ? (P.l + W - P.r) / 2 :
       P.l + (i / (rows.length - 1)) * (W - P.l - P.r);
     const sy = (v) => H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b);
 
@@ -280,7 +357,7 @@
 
     const yTicks = [lo + pad, (lo + hi) / 2, hi - pad].map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
-      '<text x="' + (P.l - 6) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
+      '<text x="' + (P.l - 7) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
     ).join("");
 
     const nLab = Math.min(6, rows.length);
@@ -289,45 +366,76 @@
       return '<text x="' + sx(i).toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + rows[i].date.slice(5) + '</text>';
     }).join("");
 
+    // 패치 마커 (기간 내 배포일)
+    const patchByDate = {};
+    const patchAnalysis = analyzePatches(rows);
+    const marks = patchAnalysis.filter(p => dateIndex[p.date] !== undefined).map(p => {
+      patchByDate[p.date] = p;
+      const x = sx(dateIndex[p.date]).toFixed(1);
+      return '<line x1="' + x + '" y1="' + P.t + '" x2="' + x + '" y2="' + (H - P.b) +
+             '" stroke="var(--mark)" stroke-width="1.2" stroke-dasharray="4 4" opacity=".55"/>' +
+             '<path d="M' + x + ' ' + (P.t - 2) + ' l4 5 -4 5 -4 -5 z" fill="var(--mark)"/>';
+    }).join("");
+
     const dots = rows.length <= 60 ? rows.map((r, i) =>
       '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>'
     ).join("") : "";
 
     const bw = Math.max(2, Math.min(14, (W - P.l - P.r) / rows.length - 2));
     const vols = rows.map((r, i) =>
-      '<rect x="' + (sx(i) - bw / 2).toFixed(1) + '" y="' + (VH - 6 - (r.cnt / maxCnt) * (VH - 12)).toFixed(1) +
-      '" width="' + bw.toFixed(1) + '" height="' + ((r.cnt / maxCnt) * (VH - 12)).toFixed(1) +
-      '" rx="1.5" fill="var(--vol)" opacity=".75"/>'
+      '<rect x="' + (sx(i) - bw / 2).toFixed(1) + '" y="' + (VH - 6 - (r.cnt / maxCnt) * (VH - 14)).toFixed(1) +
+      '" width="' + bw.toFixed(1) + '" height="' + ((r.cnt / maxCnt) * (VH - 14)).toFixed(1) +
+      '" rx="1.5" fill="var(--vol)" opacity=".7"/>'
     ).join("");
 
     chart.innerHTML =
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="시세 차트">' +
       '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="var(--accent)" stop-opacity=".15"/>' +
+      '<stop offset="0%" stop-color="var(--accent)" stop-opacity=".16"/>' +
       '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
-      yTicks + '<path d="' + area + '" fill="url(#g)"/>' +
-      '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>' +
+      yTicks + marks + '<path d="' + area + '" fill="url(#g)"/>' +
+      '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
       dots + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
-      '<circle id="cursor" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
+      '<circle id="cursor" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
       '<rect id="hit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
       '</svg>' +
       '<svg viewBox="0 0 ' + W + ' ' + VH + '" role="img" aria-label="거래량">' +
-      '<text x="' + (P.l - 6) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">거래량</text>' +
+      '<text x="' + (P.l - 7) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">거래량</text>' +
+      '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + '건/일</text>' +
       vols + '</svg>';
 
+    // 요약 타일
     const last = rows[rows.length - 1];
+    const firstMed = rows[0].med;
+    const change = firstMed > 0 ? (last.med - firstMed) / firstMed * 100 : 0;
     const tot = rows.reduce((s, r) => s + r.cnt, 0);
-    stats.innerHTML =
-      '<span>최근 중앙값 <b>' + fmtGold(last.med) + '</b></span>' +
-      '<span>기간 최저 <b>' + fmtGold(Math.min(...rows.map(r => r.min))) + '</b></span>' +
-      '<span>기간 최고 <b>' + fmtGold(Math.max(...rows.map(r => r.max))) + '</b></span>' +
-      '<span>기간 거래 <b>' + tot.toLocaleString() + '건</b></span>' +
-      '<span>기록 <b>' + rows.length + '일</b></span>';
+    const cls = change >= 3 ? "up" : change <= -3 ? "down" : "";
+    tiles.innerHTML =
+      tile("최근 중앙값", fmtGold(last.med) + ' <small>골드</small>') +
+      tile("기간 변동", fmtPct(change), cls) +
+      tile("기간 최저", fmtGold(Math.min(...rows.map(r => r.min)))) +
+      tile("기간 최고", fmtGold(Math.max(...rows.map(r => r.max)))) +
+      tile("기간 거래", tot.toLocaleString() + ' <small>건</small>');
 
+    // 패치 영향 목록
+    const pl = $("patchlist");
+    if (patchAnalysis.length) {
+      $("patchbox").hidden = false;
+      pl.innerHTML = patchAnalysis.map(p => {
+        const [word, cls2] = deltaWord(p.delta);
+        const deltaTxt = p.delta === null ? "—" : fmtPct(p.delta);
+        return '<div class="pt"><span class="d">' + p.date + '</span>' +
+          '<span class="t">' + p.title + '</span>' +
+          '<span class="delta ' + cls2 + '">' + deltaTxt + '</span>' +
+          '<span class="desc">패치 전 3일 대비 후 3일 중앙값 ' + word + '</span></div>';
+      }).join("");
+    }
+
+    // 호버
     const svg = chart.querySelector("svg");
-    const hit = svg.querySelector("#hit"), cross = svg.querySelector("#cross"), cur = svg.querySelector("#cursor");
-    hit.addEventListener("mousemove", (ev) => {
+    const hitR = svg.querySelector("#hit"), cross = svg.querySelector("#cross"), cur = svg.querySelector("#cursor");
+    hitR.addEventListener("mousemove", (ev) => {
       const rect = svg.getBoundingClientRect();
       const px = ((ev.clientX - rect.left) / rect.width) * W;
       let i = Math.round((px - P.l) / (W - P.l - P.r) * (rows.length - 1));
@@ -335,14 +443,20 @@
       const r = rows[i];
       cross.setAttribute("x1", sx(i)); cross.setAttribute("x2", sx(i)); cross.setAttribute("opacity", ".3");
       cur.setAttribute("cx", sx(i)); cur.setAttribute("cy", sy(r.med)); cur.setAttribute("opacity", "1");
-      tip.textContent = r.date + "\n중앙값 " + fmtGold(r.med) + "  (" + fmtGold(r.min) + "~" + fmtGold(r.max) + ")\n거래 " + r.cnt + "건";
+      const patch = patchByDate[r.date];
+      tip.textContent = r.date + (patch ? "  ◆ " + patch.title : "") +
+        "\n중앙값 " + fmtGold(r.med) + "  (" + fmtGold(r.min) + "~" + fmtGold(r.max) + ")\n거래 " + r.cnt.toLocaleString() + "건";
       tip.style.opacity = "1";
-      tip.style.left = Math.min(rect.width - 150, Math.max(0, (sx(i) / W) * rect.width + 10)) + "px";
-      tip.style.top = Math.max(0, (sy(r.med) / H) * rect.height - 40) + "px";
+      tip.style.left = Math.min(rect.width - 170, Math.max(0, (sx(i) / W) * rect.width + 12)) + "px";
+      tip.style.top = Math.max(0, (sy(r.med) / H) * rect.height - 48) + "px";
     });
-    hit.addEventListener("mouseleave", () => {
+    hitR.addEventListener("mouseleave", () => {
       cross.setAttribute("opacity", "0"); cur.setAttribute("opacity", "0"); tip.style.opacity = "0";
     });
+  }
+
+  function tile (k, v, cls) {
+    return '<div class="tile"><div class="k">' + k + '</div><div class="v ' + (cls || "") + '">' + v + '</div></div>';
   }
 
   /* ── 테마 ── */
