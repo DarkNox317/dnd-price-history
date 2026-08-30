@@ -817,8 +817,16 @@
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
     const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
-    const sx = (i) => rows.length === 1 ? (P.l + W - P.r) / 2 :
-      P.l + (i / (rows.length - 1)) * (W - P.l - P.r);
+    // 시간 비례 X 좌표 — 1일 화면은 00:00~24:00 절대 시각, 일별은 날짜 간격 비례
+    let ts;
+    if (intraday) {
+      ts = rows.map(r => r.b / 287);
+    } else if (rows.length > 1) {
+      const t0 = new Date(rows[0].date).getTime();
+      const t1 = new Date(rows[rows.length - 1].date).getTime();
+      ts = rows.map(r => (new Date(r.date).getTime() - t0) / Math.max(1, t1 - t0));
+    } else ts = [0.5];
+    const sx = (i) => rows.length === 1 ? (P.l + W - P.r) / 2 : P.l + ts[i] * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
     // 일별 그래프에서 미수집일 공백을 직선으로 잇지 않게 구간을 나눠 그림
@@ -842,11 +850,21 @@
       '<text x="' + (P.l - 7) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
     ).join("");
 
-    const nLab = Math.min(6, rows.length);
-    const xLabs = Array.from({ length: nLab }, (_, k) => {
-      const i = Math.round(k * (rows.length - 1) / Math.max(1, nLab - 1));
-      return '<text x="' + sx(i).toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + (rows[i].label || rows[i].date.slice(5)) + '</text>';
-    }).join("");
+    let xLabs;
+    if (intraday) {
+      // 고정 시각 눈금 (데이터 유무와 무관하게 00시~24시)
+      xLabs = [0, 48, 96, 144, 192, 240, 287].map(b => {
+        const x = P.l + (b / 287) * (W - P.l - P.r);
+        const t = b === 287 ? "24:00" : String(Math.floor(b / 12)).padStart(2, "0") + ":00";
+        return '<text x="' + x.toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + t + '</text>';
+      }).join("");
+    } else {
+      const nLab = Math.min(6, rows.length);
+      xLabs = Array.from({ length: nLab }, (_, k) => {
+        const i = Math.round(k * (rows.length - 1) / Math.max(1, nLab - 1));
+        return '<text x="' + sx(i).toFixed(1) + '" y="' + (H - P.b + 14) + '" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="middle">' + rows[i].date.slice(5) + '</text>';
+      }).join("");
+    }
 
     // 패치·시즌 마커 (기간 내 배포일) — 핫픽스는 붉은 점선, 시즌 시작은 금색 실선 (1일 모드에선 생략)
     const patchByDate = {};
@@ -873,12 +891,13 @@
     // 기울기의 시작→끝 변화율은 "기간 변동" 타일에도 쓰인다
     let trend = "", trendPct = null;
     if (rows.length >= 3) {
-      const n = ys.length, mx = (n - 1) / 2;
+      const n = ys.length;
+      const mt = ts.reduce((s, v) => s + v, 0) / n;
       const my = ys.reduce((s, v) => s + v, 0) / n;
       let num = 0, den = 0;
-      for (let i = 0; i < n; i++) { num += (i - mx) * (ys[i] - my); den += (i - mx) * (i - mx); }
+      for (let i = 0; i < n; i++) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
-      const ty0 = my - slope * mx, ty1 = my + slope * (n - 1 - mx);
+      const ty0 = my + slope * (ts[0] - mt), ty1 = my + slope * (ts[n - 1] - mt);
       if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
       // 색은 "기간 변동 (추세)" 타일과 동일 규칙: +3% 이상 빨강(상승), -3% 이하 파랑(하락)
       const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
@@ -904,7 +923,8 @@
       if (iMax !== iMin) extremes = mark(iMax, "hi") + mark(iMin, "lo");
     }
 
-    const bw = Math.max(2, Math.min(14, (W - P.l - P.r) / rows.length - 2));
+    // 시간 비례 배치에선 인접 지점 간 최소 간격에 맞춰 막대 폭 결정 (겹침 방지)
+    const bw = intraday ? 2.2 : Math.max(2, Math.min(14, (W - P.l - P.r) / rows.length - 2));
     const vols = rows.map((r, i) =>
       '<rect x="' + (sx(i) - bw / 2).toFixed(1) + '" y="' + (VH - 6 - (r.cnt / maxCnt) * (VH - 14)).toFixed(1) +
       '" width="' + bw.toFixed(1) + '" height="' + ((r.cnt / maxCnt) * (VH - 14)).toFixed(1) +
@@ -968,8 +988,11 @@
     const showAt = (clientX) => {
       const rect = svg.getBoundingClientRect();
       const px = ((clientX - rect.left) / rect.width) * W;
-      let i = Math.round((px - P.l) / (W - P.l - P.r) * (rows.length - 1));
-      i = Math.max(0, Math.min(rows.length - 1, i));
+      let i = 0, best = Infinity;
+      for (let k = 0; k < rows.length; k++) {
+        const d = Math.abs(sx(k) - px);
+        if (d < best) { best = d; i = k; }
+      }
       const r = rows[i];
       cross.setAttribute("x1", sx(i)); cross.setAttribute("x2", sx(i)); cross.setAttribute("opacity", ".3");
       cur.setAttribute("cx", sx(i)); cur.setAttribute("cy", sy(r.med)); cur.setAttribute("opacity", "1");
