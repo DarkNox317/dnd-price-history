@@ -2,7 +2,7 @@ name: collect5m
 
 on:
   schedule:
-    - cron: "8,38 * * * *"
+    - cron: "8 * * * *"   # 안전망: 새 날짜 감지·실패 복구용 (평소엔 체인이 즉시 이어감)
   workflow_dispatch:
     inputs:
       date:
@@ -50,3 +50,24 @@ jobs:
           git commit -m "data5m: update"
           git pull --rebase origin main
           git push origin main
+
+      - name: Chain next day
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if python3 - <<'EOF'
+          import datetime as dt, os, sys
+          have = set()
+          if os.path.isdir("data5m"):
+              have = {f[:-5] for f in os.listdir("data5m") if f.endswith(".json") and f != "index.json"}
+          today = dt.datetime.now(dt.timezone.utc).date()
+          missing = [(today - dt.timedelta(days=b)).strftime("%Y-%m-%d") for b in range(1, 16)]
+          sys.exit(0 if any(d not in have for d in missing) else 1)
+          EOF
+          then
+            gh workflow run collect5m.yml
+            echo "미수집 날짜 남음 - 다음 실행 즉시 예약"
+          else
+            echo "수집할 날짜 없음 - 체인 종료 (크론이 새 날짜를 이어받음)"
+          fi
