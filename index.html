@@ -739,9 +739,9 @@
     let lo = m / AXIS_RATIO, hi = m * AXIS_RATIO;
     const srt = [...meds].sort((a, b) => a - b);
     const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
-    const q02 = quant(0.02), q98 = quant(0.98);
-    if (q02 < lo) lo = Math.max(0, q02 * 0.92);
-    if (q98 > hi) hi = q98 * 1.08;
+    const q05 = quant(0.05), q95 = quant(0.95);
+    if (q05 < lo) lo = Math.max(0, q05 * 0.92);
+    if (q95 > hi) hi = q95 * 1.08;
     const pad = (hi - lo) * 0.06;
     return [lo, hi, pad];
   }
