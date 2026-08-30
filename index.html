@@ -205,6 +205,11 @@
         <div><h3>급등 (직전 수집일 대비)</h3><div id="h_up"></div></div>
         <div><h3>급락 (직전 수집일 대비)</h3><div id="h_down"></div></div>
       </div>
+      <div class="cols">
+        <div><h3>주간 급등 (7일 대비)</h3><div id="h_wup"></div></div>
+        <div><h3>주간 급락 (7일 대비)</h3><div id="h_wdown"></div></div>
+        <div><h3>거래량 급증 (평소 대비)</h3><div id="h_surge"></div></div>
+      </div>
       <div id="h_favsec" hidden style="margin-top:18px">
         <h3>★ 즐겨찾기</h3>
         <div id="h_fav"></div>
@@ -248,6 +253,7 @@
 
 <p class="note">
   전 서버 판매 기록을 수집해 5분 단위·일 단위로 집계(날짜는 UTC 기준) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 판매 건수 ·
+  음영 띠 = 최저~최고 범위, 청록 곡선 = 이동평균(1일 화면 1시간 · 일별 7일), 점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 ·
   붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
   시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
@@ -375,6 +381,46 @@
     $("h_down").innerHTML = downs.length ? downs.map(m =>
       li(m.id, moverVal(m, "val down"))).join("") :
       '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
+
+    // 주간 무버: 최근 수집일을 ~7일 전 수집일과 비교
+    const idxL = withData.indexOf(L);
+    let Wd = null;
+    for (let i = idxL - 1; i >= 0; i--) {
+      if ((new Date(L) - new Date(withData[i])) / 864e5 >= 6) { Wd = withData[i]; break; }
+    }
+    let wups = [], wdowns = [];
+    if (Wd) {
+      const wk = dayMap[Wd];
+      const mv = ids.filter(id => wk[id] && wk[id][3] >= 5 && day[id][3] >= 5 && wk[id][0] > 0)
+        .map(id => ({ id, from: wk[id][0], to: day[id][0], pct: (day[id][0] - wk[id][0]) / wk[id][0] * 100 }));
+      mv.sort((a, b) => b.pct - a.pct);
+      wups = mv.filter(m => m.pct >= 10).slice(0, 6);
+      wdowns = mv.filter(m => m.pct <= -10).slice(-6).reverse();
+    }
+    const emptyLi = (msg) => '<div class="li" style="cursor:default;color:var(--muted)">' + msg + '</div>';
+    $("h_wup").innerHTML = wups.length ? wups.map(m => li(m.id, moverVal(m, "val up"))).join("") :
+      emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
+    $("h_wdown").innerHTML = wdowns.length ? wdowns.map(m => li(m.id, moverVal(m, "val down"))).join("") :
+      emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
+
+    // 거래량 급증: 직전 수집일들(최대 7일) 평균의 3배 이상
+    const prevDays = withData.slice(Math.max(0, idxL - 7), idxL);
+    let surges = [];
+    if (prevDays.length >= 2) {
+      for (const id of ids) {
+        const hist = prevDays.map(d => (dayMap[d][id] || [0, 0, 0, 0])[3]);
+        const avg = hist.reduce((s, v) => s + v, 0) / hist.length;
+        if (avg >= 5 && day[id][3] >= 30 && day[id][3] >= avg * 3) {
+          surges.push({ id, cnt: day[id][3], ratio: day[id][3] / avg });
+        }
+      }
+      surges.sort((a, b) => b.ratio - a.ratio);
+      surges = surges.slice(0, 6);
+    }
+    $("h_surge").innerHTML = surges.length ? surges.map(m =>
+      li(m.id, '<span class="val">' + m.cnt.toLocaleString() + '건 <b style="color:var(--ink)">×' +
+        (Math.round(m.ratio * 10) / 10) + '</b></span>')).join("") :
+      emptyLi(prevDays.length >= 2 ? "평소 대비 급증 없음" : "3일치가 쌓이면 표시돼");
 
     $("placeholder").hidden = true;
     $("dash").hidden = false;
@@ -686,6 +732,7 @@
     }
     const buckets = ((day5mCache[current5mDate] || {}).items || {})[currentItem] || [];
     return buckets.map(b => ({
+      b: b[0],
       label: String(Math.floor(b[0] / 12)).padStart(2, "0") + ":" + String((b[0] % 12) * 5).padStart(2, "0"),
       med: b[1], min: b[2], max: b[3], cnt: b[4]
     }));
@@ -764,6 +811,7 @@
     const meds = rows.map(r => r.med);
     // 극단값(트롤 매물)만 축에서 제외 — 범위를 벗어난 점은 가장자리에 눌러 그리고, 실제 값은 호버 툴팁에 보임
     const [lo, hi, pad] = robustRange(meds);
+    const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));   // 축 범위로 클램프된 값 (그래프에 그려지는 값)
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
     const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
@@ -771,9 +819,43 @@
       P.l + (i / (rows.length - 1)) * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
-    const line = rows.map((r, i) => (i ? "L" : "M") + sx(i).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ");
-    const area = line + " L" + sx(rows.length - 1).toFixed(1) + "," + (H - P.b) +
-                 " L" + sx(0).toFixed(1) + "," + (H - P.b) + " Z";
+    // 공백(미수집일·장시간 무거래)을 직선으로 잇지 않게 구간을 나눠 그림
+    // 일별: 하루 넘게 비면 끊음 / 1일 화면: 1시간(12버킷) 넘게 비면 끊음
+    const segs = [];
+    {
+      let start = 0;
+      for (let i = 1; i <= rows.length; i++) {
+        const gap = i === rows.length ? true :
+          (intraday ? (rows[i].b - rows[i - 1].b > 12)
+                    : ((new Date(rows[i].date) - new Date(rows[i - 1].date)) / 864e5 > 1));
+        if (gap) { segs.push([start, i - 1]); start = i; }
+      }
+    }
+    const line = segs.map(([a, b]) =>
+      rows.slice(a, b + 1).map((r, k) => (k ? "L" : "M") + sx(a + k).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ")
+    ).join(" ");
+
+    // 최저~최고 범위 음영 띠 (변동 폭이 한눈에 보이게)
+    const band = segs.map(([a, b]) => {
+      if (b - a < 1) return "";
+      const d = [];
+      for (let i = a; i <= b; i++) d.push((i === a ? "M" : "L") + sx(i).toFixed(1) + "," + sy(rows[i].max).toFixed(1));
+      for (let i = b; i >= a; i--) d.push("L" + sx(i).toFixed(1) + "," + sy(rows[i].min).toFixed(1));
+      return '<path d="' + d.join(" ") + ' Z" fill="var(--accent)" opacity=".1"/>';
+    }).join("");
+
+    // 이동평균 (1일 화면: 1시간 = 12버킷 / 일별: 7일)
+    const win = intraday ? 12 : 7;
+    let maPath = "";
+    if (rows.length >= win + 2) {
+      let s = 0; const pts = [];
+      for (let i = 0; i < rows.length; i++) {
+        s += ys[i]; if (i >= win) s -= ys[i - win];
+        if (i >= win - 1) pts.push([i, s / win]);
+      }
+      maPath = '<path d="' + pts.map((p, k) => (k ? "L" : "M") + sx(p[0]).toFixed(1) + "," + sy(p[1]).toFixed(1)).join(" ") +
+        '" fill="none" stroke="var(--vol)" stroke-width="1.4" opacity=".85"/>';
+    }
 
     const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
@@ -809,7 +891,6 @@
 
     // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
     // 기울기의 시작→끝 변화율은 "기간 변동" 타일에도 쓰인다
-    const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
     let trend = "", trendPct = null;
     if (rows.length >= 3) {
       const n = ys.length, mx = (n - 1) / 2;
@@ -852,12 +933,9 @@
 
     chart.innerHTML =
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="시세 차트">' +
-      '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="var(--accent)" stop-opacity=".16"/>' +
-      '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
-      yTicks + marks + '<path d="' + area + '" fill="url(#g)"/>' +
+      yTicks + marks + band +
       '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
-      trend + dots + extremes + xLabs +
+      maPath + trend + dots + extremes + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
       '<circle id="cursor" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
       '<rect id="hit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
@@ -904,12 +982,12 @@
       }).join("");
     }
 
-    // 호버
+    // 호버·터치 공용
     const svg = chart.querySelector("svg");
     const hitR = svg.querySelector("#hit"), cross = svg.querySelector("#cross"), cur = svg.querySelector("#cursor");
-    hitR.addEventListener("mousemove", (ev) => {
+    const showAt = (clientX) => {
       const rect = svg.getBoundingClientRect();
-      const px = ((ev.clientX - rect.left) / rect.width) * W;
+      const px = ((clientX - rect.left) / rect.width) * W;
       let i = Math.round((px - P.l) / (W - P.l - P.r) * (rows.length - 1));
       i = Math.max(0, Math.min(rows.length - 1, i));
       const r = rows[i];
@@ -921,7 +999,10 @@
       tip.style.opacity = "1";
       tip.style.left = Math.min(rect.width - 170, Math.max(0, (sx(i) / W) * rect.width + 12)) + "px";
       tip.style.top = Math.max(0, (sy(r.med) / H) * rect.height - 48) + "px";
-    });
+    };
+    hitR.addEventListener("mousemove", (ev) => showAt(ev.clientX));
+    hitR.addEventListener("touchstart", (ev) => showAt(ev.touches[0].clientX), { passive: true });
+    hitR.addEventListener("touchmove", (ev) => showAt(ev.touches[0].clientX), { passive: true });
     hitR.addEventListener("mouseleave", () => {
       cross.setAttribute("opacity", "0"); cur.setAttribute("opacity", "0"); tip.style.opacity = "0";
     });
@@ -1012,9 +1093,9 @@
     // 호버: 같은 경과일의 시즌별 값을 나란히
     const svg = chart.querySelector("svg");
     const hitR = svg.querySelector("#hit"), cross = svg.querySelector("#cross");
-    hitR.addEventListener("mousemove", (ev) => {
+    const showOvlAt = (clientX) => {
       const rect = svg.getBoundingClientRect();
-      const px = ((ev.clientX - rect.left) / rect.width) * W;
+      const px = ((clientX - rect.left) / rect.width) * W;
       let d = Math.round((px - P.l) / (W - P.l - P.r) * maxDays);
       d = Math.max(0, Math.min(maxDays, d));
       cross.setAttribute("x1", sx(d)); cross.setAttribute("x2", sx(d)); cross.setAttribute("opacity", ".3");
@@ -1026,7 +1107,10 @@
       tip.style.opacity = "1";
       tip.style.left = Math.min(rect.width - 170, Math.max(0, (sx(d) / W) * rect.width + 12)) + "px";
       tip.style.top = "10px";
-    });
+    };
+    hitR.addEventListener("mousemove", (ev) => showOvlAt(ev.clientX));
+    hitR.addEventListener("touchstart", (ev) => showOvlAt(ev.touches[0].clientX), { passive: true });
+    hitR.addEventListener("touchmove", (ev) => showOvlAt(ev.touches[0].clientX), { passive: true });
     hitR.addEventListener("mouseleave", () => {
       cross.setAttribute("opacity", "0"); tip.style.opacity = "0";
     });
