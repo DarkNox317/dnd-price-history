@@ -717,7 +717,8 @@
       return rows.filter(r => r.date >= from && r.date <= end);
     }
     if (typeof currentRange === "number" && currentRange > 0 && rows.length) {
-      const cut = new Date(Date.now() - currentRange * 864e5).toISOString().slice(0, 10);
+      // "오늘"이 아니라 데이터가 있는 마지막 날 기준 최근 N일 (수집은 항상 하루 이상 늦으므로)
+      const cut = shiftDate(rows[rows.length - 1].date, -(currentRange - 1));
       return rows.filter(r => r.date >= cut);
     }
     return rows;
