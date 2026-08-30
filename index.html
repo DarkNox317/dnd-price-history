@@ -729,20 +729,21 @@
   /* ── 차트 ── */
   const W = 720, H = 270, VH = 66, P = { t: 16, r: 14, b: 22, l: 54 };
 
-  // 축 범위: 2~98 분위를 기본으로, 분위 폭의 1.5배 울타리 안에 든 실제 값까지 포함.
-  // 진짜 극단값(트롤 매물)만 잘라내고, 정상적인 고점·저점은 축 안에 들어온다. 위아래 여유 18%.
+  // 축 범위: 기간 중앙값의 ÷2.5 ~ ×2.5 상대 고정 범위.
+  // 확대해서 잔물결을 크게 보여주지 않고, 변동을 실제 비율감 그대로 보여준다.
+  // 데이터가 이 범위를 넘으면(진짜 큰 추세 변화) 2~98 분위까지 축을 넓히고,
+  // 그것도 넘는 극단값(트롤 매물)만 가장자리에 눌러 그린다.
+  const AXIS_RATIO = 2.5;
   function robustRange (meds) {
+    const m = median(meds);
+    let lo = m / AXIS_RATIO, hi = m * AXIS_RATIO;
     const srt = [...meds].sort((a, b) => a - b);
     const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
-    let lo = quant(0.02), hi = quant(0.98);
-    if (!(hi > lo)) { lo = srt[0]; hi = srt[srt.length - 1]; }
-    const fence = (hi - lo) * 1.5 || hi * 0.5;
-    for (const v of srt) {
-      if (v < lo && v >= lo - fence) lo = v;
-      if (v > hi && v <= hi + fence) hi = v;
-    }
-    const pad = (hi - lo) * 0.18 || Math.max(1, hi * 0.1);
-    return [Math.max(0, lo - pad), hi + pad, pad];
+    const q02 = quant(0.02), q98 = quant(0.98);
+    if (q02 < lo) lo = Math.max(0, q02 * 0.92);
+    if (q98 > hi) hi = q98 * 1.08;
+    const pad = (hi - lo) * 0.06;
+    return [lo, hi, pad];
   }
 
   // 렌더 경쟁 방지: 버튼 연타 시 늦게 끝난 옛 렌더가 새 화면을 덮어쓰지 않게
