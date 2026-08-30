@@ -29,6 +29,15 @@ jobs:
           COLLECT_DATE: ${{ inputs.date }}
         run: python collect5m.py ${COLLECT_DATE:+--date $COLLECT_DATE} ${COLLECT_DATE:---auto}
 
+      - name: Upload raw trade archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-${{ github.run_id }}
+          path: rawout/*.jsonl.gz
+          retention-days: 90
+          if-no-files-found: ignore
+          compression-level: 0
+
       - name: Commit data
         run: |
           git config user.name "DarkNox317"

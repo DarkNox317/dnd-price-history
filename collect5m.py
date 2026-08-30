@@ -14,6 +14,7 @@ Usage:
 """
 import argparse
 import datetime as dt
+import gzip
 import json
 import os
 import statistics
@@ -74,6 +75,9 @@ def iso(t):
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# 전량 수집 시 거래 낱개 원본을 gzip 으로 보관 (Actions 아티팩트로 업로드 → 사용자 PC 로 배달)
+RAW_FH = [None]
+
 def sweep_window(frm, to, acc, item_id=None, max_pages=None):
     """[frm, to) 구간의 판매 전량을 페이지로 훑어 acc[(item, bucket)] 에 가격 누적."""
     day_start = frm.replace(hour=0, minute=0, second=0)
@@ -94,6 +98,10 @@ def sweep_window(frm, to, acc, item_id=None, max_pages=None):
             hh, mm = int(ts[11:13]), int(ts[14:16])
             bucket = (hh * 60 + mm) // 5
             acc.setdefault(iid, {}).setdefault(bucket, []).append(float(p))
+            if RAW_FH[0] is not None:
+                RAW_FH[0].write(json.dumps(
+                    [ts, iid, r.get("price_per_unit"), r.get("price"), r.get("quantity")],
+                    separators=(",", ":")) + "\n")
             fetched += 1
         pg = d.get("pagination") or {}
         total = pg.get("total") or 0
@@ -234,7 +242,17 @@ def main():
 
     print("collecting UTC day %s%s" % (day, " (smoke: %s)" % args.item_id if args.item_id else ""),
           flush=True)
-    acc, grabbed = collect_day(day, args.item_id, args.max_pages)
+    if not args.item_id and not args.max_pages:
+        # 전량 수집일 때만 거래 낱개 원본 보관: [시각, 아이템, 개당가, 총가, 수량] 한 줄씩
+        os.makedirs(os.path.join(ROOT, "rawout"), exist_ok=True)
+        RAW_FH[0] = gzip.open(os.path.join(ROOT, "rawout", "raw-%s.jsonl.gz" % day),
+                              "wt", encoding="utf-8")
+    try:
+        acc, grabbed = collect_day(day, args.item_id, args.max_pages)
+    finally:
+        if RAW_FH[0] is not None:
+            RAW_FH[0].close()
+            RAW_FH[0] = None
     detail, daily = summarize(acc)
     print("done: %d건 수집, 아이템 %d종, 버킷 %d개"
           % (grabbed, len(detail), sum(len(v) for v in detail.values())), flush=True)
