@@ -54,7 +54,12 @@ def api_get(path, params):
                 print("API credit exhausted (402) — run aborted, day will be retried after reset", flush=True)
                 raise SystemExit(1)
             if e.code == 429:
-                time.sleep(15 * (attempt + 1))
+                # 서버가 알려주는 대기 시간(Retry-After)을 따르고, 없으면 보수적으로 후퇴
+                try:
+                    ra = float(e.headers.get("Retry-After") or 0)
+                except ValueError:
+                    ra = 0
+                time.sleep(min(60, max(ra, 2 * (attempt + 1))))
                 continue
             if e.code >= 500:
                 time.sleep(5 * (attempt + 1))
