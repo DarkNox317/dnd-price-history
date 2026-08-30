@@ -729,6 +729,22 @@
   /* ── 차트 ── */
   const W = 720, H = 270, VH = 66, P = { t: 16, r: 14, b: 22, l: 54 };
 
+  // 축 범위: 2~98 분위를 기본으로, 분위 폭의 1.5배 울타리 안에 든 실제 값까지 포함.
+  // 진짜 극단값(트롤 매물)만 잘라내고, 정상적인 고점·저점은 축 안에 들어온다. 위아래 여유 18%.
+  function robustRange (meds) {
+    const srt = [...meds].sort((a, b) => a - b);
+    const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
+    let lo = quant(0.02), hi = quant(0.98);
+    if (!(hi > lo)) { lo = srt[0]; hi = srt[srt.length - 1]; }
+    const fence = (hi - lo) * 1.5 || hi * 0.5;
+    for (const v of srt) {
+      if (v < lo && v >= lo - fence) lo = v;
+      if (v > hi && v <= hi + fence) hi = v;
+    }
+    const pad = (hi - lo) * 0.18 || Math.max(1, hi * 0.1);
+    return [Math.max(0, lo - pad), hi + pad, pad];
+  }
+
   // 렌더 경쟁 방지: 버튼 연타 시 늦게 끝난 옛 렌더가 새 화면을 덮어쓰지 않게
   let renderSeq = 0;
 
@@ -745,14 +761,8 @@
     if (!rows.length) return;
 
     const meds = rows.map(r => r.med);
-    // 축 범위는 5~95 분위수로 — 트롤 매물(극단값) 한두 개가 축을 잡아먹지 않게.
-    // 범위를 벗어난 점은 위/아래 가장자리에 눌러 그리고, 실제 값은 호버 툴팁에 그대로 보임.
-    const srt = [...meds].sort((a, b) => a - b);
-    const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
-    let lo = quant(0.05), hi = quant(0.95);
-    if (!(hi > lo)) { lo = Math.min(...meds); hi = Math.max(...meds); }
-    const pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.1);
-    lo = Math.max(0, lo - pad); hi += pad;
+    // 극단값(트롤 매물)만 축에서 제외 — 범위를 벗어난 점은 가장자리에 눌러 그리고, 실제 값은 호버 툴팁에 보임
+    const [lo, hi, pad] = robustRange(meds);
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
     const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
@@ -933,12 +943,7 @@
     const maxDays = Math.max(...selected.map(s => dayOf(seasonRange(s)[1], s.date)), 7);
 
     const allMeds = seriesList.flatMap(sr => sr.rows.map(r => r.med));
-    const srt = [...allMeds].sort((a, b) => a - b);
-    const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
-    let lo = quant(0.05), hi = quant(0.95);
-    if (!(hi > lo)) { lo = Math.min(...allMeds); hi = Math.max(...allMeds); }
-    const pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.1);
-    lo = Math.max(0, lo - pad); hi += pad;
+    const [lo, hi, pad] = robustRange(allMeds);
 
     const sx = (d) => P.l + (d / maxDays) * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
