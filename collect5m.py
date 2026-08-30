@@ -25,7 +25,7 @@ import urllib.request
 
 BASE = "https://api.darkerdb.com"
 ROOT = os.path.dirname(os.path.abspath(__file__))
-REQUEST_GAP = 1.05
+REQUEST_GAP = 0.70          # Epic 플랜: 90 req/min → 0.67s 간격, 약간의 여유
 PAGE_LIMIT = 50
 BACKFILL_WINDOW_DAYS = 15
 KEY = os.environ.get("DARKERDB_API_KEY", "").strip()
@@ -42,6 +42,10 @@ def api_get(path, params):
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
+            if e.code == 402:
+                # 크레딧 소진: 부분 데이터를 저장하지 않도록 즉시 중단. 리셋 후 --auto 가 같은 날을 다시 수집한다.
+                print("API credit exhausted (402) — run aborted, day will be retried after reset", flush=True)
+                raise SystemExit(1)
             if e.code == 429:
                 time.sleep(15 * (attempt + 1))
                 continue
