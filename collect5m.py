@@ -199,7 +199,8 @@ def main():
     elif args.auto:
         have = collected_days()
         day = None
-        for back in range(1, BACKFILL_WINDOW_DAYS + 1):
+        # 가장 오래된 미수집 날짜부터 — API 보존 기간이 끝나 소멸되기 전의 날짜를 먼저 구한다
+        for back in range(BACKFILL_WINDOW_DAYS, 0, -1):
             d = today - dt.timedelta(days=back)
             if d.strftime("%Y-%m-%d") not in have:
                 day = d
