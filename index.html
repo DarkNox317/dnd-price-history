@@ -205,6 +205,10 @@
         <div><h3>급등 (직전 수집일 대비)</h3><div id="h_up"></div></div>
         <div><h3>급락 (직전 수집일 대비)</h3><div id="h_down"></div></div>
       </div>
+      <div id="h_favsec" hidden style="margin-top:18px">
+        <h3>★ 즐겨찾기</h3>
+        <div id="h_fav"></div>
+      </div>
     </div>
   </div>
   <div id="view" hidden>
@@ -213,6 +217,8 @@
       <span class="rdot" id="v_dot"></span>
       <h2 id="v_ko"></h2>
       <span class="en" id="v_en"></span>
+      <button id="btn-fav" type="button" title="즐겨찾기"
+        style="background:none;border:none;cursor:pointer;font-size:19px;line-height:1;padding:2px 4px;color:var(--muted)">☆</button>
       <span class="rswitch" id="v_rswitch"></span>
     </div>
     <div class="ranges" id="ranges">
@@ -265,6 +271,18 @@
   let currentItem = null, currentRange = 7, currentSeason = null, current5mDate = null;
   let overlayOn = false, overlaySel = new Set();      // 시즌 겹쳐보기 상태
   const OVL_COLORS = ["#7da7d9", "#c99fe0", "#8fbf8f", "#d9a97d", "#d97d7d"];
+
+  // 즐겨찾기 (브라우저에 저장)
+  let FAVS = [];
+  try { FAVS = JSON.parse(localStorage.getItem("ddc-favs") || "[]"); } catch (e) {}
+  function saveFavs () { try { localStorage.setItem("ddc-favs", JSON.stringify(FAVS)); } catch (e) {} }
+
+  // 한글 초성 추출 ("치유의 물약" → "ㅊㅇㅇㅁㅇ")
+  const CHO = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  const choseong = (s) => [...s].map(c => {
+    const code = c.charCodeAt(0) - 0xAC00;
+    return (code >= 0 && code < 11172) ? CHO[Math.floor(code / 588)] : c;
+  }).join("");
 
   const fmtGold = (v) => v >= 10000 ? (Math.round(v / 100) / 10).toLocaleString() + "k" : Math.round(v).toLocaleString();
   const fmtPct = (p) => (p > 0 ? "+" : "") + (Math.round(p * 10) / 10) + "%";
@@ -358,6 +376,36 @@
 
     $("placeholder").hidden = true;
     $("dash").hidden = false;
+
+    HOME_DAY = day; HOME_PREV = Pd ? dayMap[Pd] : null;
+    renderFavs();
+  }
+
+  /* ── 즐겨찾기 섹션 (홈 하단) ── */
+  let HOME_DAY = null, HOME_PREV = null;
+  function renderFavs () {
+    const sec = $("h_favsec");
+    if (!FAVS.length || !HOME_DAY) { sec.hidden = true; return; }
+    $("h_fav").innerHTML = FAVS.map(id => {
+      const [ko, , rar] = CATALOG[id] || [id, "", ""];
+      const cur = HOME_DAY[id], prev = HOME_PREV && HOME_PREV[id];
+      let val = '<span class="val" style="color:var(--muted)">최근 거래 없음</span>';
+      if (cur) {
+        let pct = "";
+        if (prev && prev[0] > 0) {
+          const p = (cur[0] - prev[0]) / prev[0] * 100;
+          const cls = p >= 3 ? "up" : p <= -3 ? "down" : "";
+          pct = ' <span class="' + cls + '" style="font-weight:700">' + fmtPct(p) + '</span>';
+        }
+        val = '<span class="val"><b style="color:var(--ink)">' + fmtGold(cur[0]) + '</b> · ' +
+              cur[3].toLocaleString() + '건' + pct + '</span>';
+      }
+      return '<div class="li" data-id="' + id + '">' +
+        '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
+        '<span class="nm">' + ko + ' <small style="color:var(--muted)">' + (RARITY_KO[rar] || "") + '</small></span>' +
+        val + '</div>';
+    }).join("");
+    sec.hidden = false;
   }
 
   async function loadMonth (m) {
@@ -383,6 +431,7 @@
     }
     for (const g of map.values()) {
       g.variants.sort((a, b) => (RANK[a.rar] ?? 9) - (RANK[b.rar] ?? 9));
+      g.cho = choseong(g.ko).replace(/\s/g, "");
     }
     NAME_INDEX = [...map.values()];
   }
@@ -402,8 +451,15 @@
     if (!t) return;
     const r = rsel.value;
     const starts = [], contains = [];
+    const tc = t.replace(/\s/g, "");
+    const isCho = /^[ㄱ-ㅎ]+$/.test(tc);       // 초성만 입력하면 초성 검색 (예: "ㅊㅇ")
     for (const g of NAME_INDEX) {
       if (r !== "all" && !g.variants.some(v => v.rar === r)) continue;
+      if (isCho) {
+        if (g.cho.startsWith(tc)) starts.push(g);
+        else if (g.cho.includes(tc)) contains.push(g);
+        continue;
+      }
       const k = g.ko.toLowerCase(), e = g.en.toLowerCase();
       if (k.startsWith(t) || e.startsWith(t)) starts.push(g);
       else if (k.includes(t) || e.includes(t)) contains.push(g);
@@ -453,6 +509,20 @@
     q.value = "";
     $("view").hidden = true;
     $("home").hidden = false;
+    renderFavs();
+  });
+
+  function paintFavBtn () {
+    const on = currentItem && FAVS.includes(currentItem);
+    $("btn-fav").textContent = on ? "★" : "☆";
+    $("btn-fav").style.color = on ? "var(--accent)" : "var(--muted)";
+  }
+  $("btn-fav").addEventListener("click", () => {
+    if (!currentItem) return;
+    const i = FAVS.indexOf(currentItem);
+    if (i >= 0) FAVS.splice(i, 1); else FAVS.push(currentItem);
+    saveFavs();
+    paintFavBtn();
   });
 
   /* ── 선택·범위 ── */
@@ -466,6 +536,7 @@
     $("v_ko").textContent = ko;
     $("v_en").textContent = en;
     $("v_dot").style.background = RARITY_COLOR[rar] || "#999";
+    paintFavBtn();
 
     // 같은 이름의 다른 등급으로 바로 전환하는 칩
     const grp = NAME_INDEX.find(g => g.variants.some(v => v.id === id));
@@ -717,6 +788,22 @@
       '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>'
     ).join("") : "";
 
+    // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
+    let trend = "";
+    if (rows.length >= 3) {
+      const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
+      const n = ys.length, mx = (n - 1) / 2;
+      const my = ys.reduce((s, v) => s + v, 0) / n;
+      let num = 0, den = 0;
+      for (let i = 0; i < n; i++) { num += (i - mx) * (ys[i] - my); den += (i - mx) * (i - mx); }
+      const slope = den ? num / den : 0;
+      const ty0 = my - slope * mx, ty1 = my + slope * (n - 1 - mx);
+      const tcol = ty1 > ty0 * 1.01 ? "#4caf7d" : ty1 < ty0 * 0.99 ? "#e05b5b" : "var(--muted)";
+      trend = '<line x1="' + sx(0).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
+        '" x2="' + sx(rows.length - 1).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
+        '" stroke="' + tcol + '" stroke-width="1.5" stroke-dasharray="7 5" opacity=".75"/>';
+    }
+
     const bw = Math.max(2, Math.min(14, (W - P.l - P.r) / rows.length - 2));
     const vols = rows.map((r, i) =>
       '<rect x="' + (sx(i) - bw / 2).toFixed(1) + '" y="' + (VH - 6 - (r.cnt / maxCnt) * (VH - 14)).toFixed(1) +
@@ -731,7 +818,7 @@
       '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
       yTicks + marks + '<path d="' + area + '" fill="url(#g)"/>' +
       '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
-      dots + xLabs +
+      trend + dots + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
       '<circle id="cursor" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
       '<rect id="hit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
