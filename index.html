@@ -797,15 +797,17 @@
     ).join("") : "";
 
     // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
-    let trend = "";
+    // 기울기의 시작→끝 변화율은 "기간 변동" 타일에도 쓰인다
+    const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
+    let trend = "", trendPct = null;
     if (rows.length >= 3) {
-      const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
       const n = ys.length, mx = (n - 1) / 2;
       const my = ys.reduce((s, v) => s + v, 0) / n;
       let num = 0, den = 0;
       for (let i = 0; i < n; i++) { num += (i - mx) * (ys[i] - my); den += (i - mx) * (i - mx); }
       const slope = den ? num / den : 0;
       const ty0 = my - slope * mx, ty1 = my + slope * (n - 1 - mx);
+      if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
       const tcol = ty1 > ty0 * 1.01 ? "#4caf7d" : ty1 < ty0 * 0.99 ? "#e05b5b" : "var(--muted)";
       trend = '<line x1="' + sx(0).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
         '" x2="' + sx(rows.length - 1).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
@@ -836,18 +838,19 @@
       '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + (intraday ? '건/5분' : '건/일') + '</text>' +
       vols + '</svg>';
 
-    // 요약 타일 — 변동/최근값은 양 끝 3개 지점의 중앙값으로 계산 (튀는 값 한 개에 안 흔들리게)
+    // 요약 타일 — 변동은 추세선 기울기(기간 전체), 최저·최고는 그래프에 보이는 중앙값 선 기준
     const k = Math.min(3, rows.length);
     const startMed = median(rows.slice(0, k).map(r => r.med));
     const endMed = median(rows.slice(-k).map(r => r.med));
-    const change = startMed > 0 ? (endMed - startMed) / startMed * 100 : 0;
+    const change = trendPct !== null ? trendPct :
+      (startMed > 0 ? (endMed - startMed) / startMed * 100 : 0);
     const tot = rows.reduce((s, r) => s + r.cnt, 0);
     const cls = change >= 3 ? "up" : change <= -3 ? "down" : "";
     tiles.innerHTML =
       tile("최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
-      tile("기간 변동", fmtPct(change), cls) +
-      tile("기간 최저", fmtGold(Math.min(...rows.map(r => r.min)))) +
-      tile("기간 최고", fmtGold(Math.max(...rows.map(r => r.max)))) +
+      tile("기간 변동 (추세)", fmtPct(change), cls) +
+      tile("기간 최저", fmtGold(Math.min(...ys))) +
+      tile("기간 최고", fmtGold(Math.max(...ys))) +
       tile("기간 거래", tot.toLocaleString() + ' <small>건</small>');
 
     // 패치 영향 목록
