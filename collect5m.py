@@ -25,7 +25,7 @@ import urllib.request
 
 BASE = "https://api.darkerdb.com"
 ROOT = os.path.dirname(os.path.abspath(__file__))
-REQUEST_GAP = 0.68          # Epic 플랜: 90 req/min → 분당 ~88로 한도 바로 아래 페이싱
+REQUEST_GAP = 0.70          # Epic 플랜: 90 req/min → 분당 ~85 페이싱 (여유 마진)
 PAGE_LIMIT = 50
 BACKFILL_WINDOW_DAYS = 15
 KEY = os.environ.get("DARKERDB_API_KEY", "").strip()
