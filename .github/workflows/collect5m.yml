@@ -19,7 +19,7 @@ permissions:
 jobs:
   collect5m:
     runs-on: ubuntu-latest
-    timeout-minutes: 170
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
 
