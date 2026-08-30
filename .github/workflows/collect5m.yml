@@ -2,7 +2,7 @@ name: collect5m
 
 on:
   schedule:
-    - cron: "23 */2 * * *"
+    - cron: "8,38 * * * *"
   workflow_dispatch:
     inputs:
       date:
