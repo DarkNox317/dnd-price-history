@@ -109,6 +109,7 @@
     padding: .1rem .6rem; margin-left: .6rem; vertical-align: .35em; letter-spacing: .04em; }
 
   .ranges { display: flex; gap: .4rem; margin: .9rem 0 1rem; flex-wrap: wrap; }
+  .ranges[hidden] { display: none; }
   .rng { background: var(--ground); border: 1px solid var(--edge); border-radius: 999px;
     padding: .3rem .95rem; cursor: pointer; font-size: .8rem; color: var(--ink-2);
     font-family: var(--sans); }
@@ -253,7 +254,7 @@
 
 <p class="note">
   전 서버 판매 기록을 수집해 5분 단위·일 단위로 집계(날짜는 UTC 기준) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 판매 건수 ·
-  청록 곡선 = 이동평균(1일 화면 1시간 · 일별 7일), 점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 ·
+  점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 ·
   붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
   시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
@@ -836,18 +837,6 @@
       rows.slice(a, b + 1).map((r, k) => (k ? "L" : "M") + sx(a + k).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ")
     ).join(" ");
 
-    // 이동평균 (1일 화면: 1시간 = 12버킷 / 일별: 7일)
-    const win = intraday ? 12 : 7;
-    let maPath = "";
-    if (rows.length >= win + 2) {
-      let s = 0; const pts = [];
-      for (let i = 0; i < rows.length; i++) {
-        s += ys[i]; if (i >= win) s -= ys[i - win];
-        if (i >= win - 1) pts.push([i, s / win]);
-      }
-      maPath = '<path d="' + pts.map((p, k) => (k ? "L" : "M") + sx(p[0]).toFixed(1) + "," + sy(p[1]).toFixed(1)).join(" ") +
-        '" fill="none" stroke="var(--vol)" stroke-width="1.4" opacity=".85"/>';
-    }
 
     const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
@@ -927,7 +916,7 @@
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="시세 차트">' +
       yTicks + marks +
       '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
-      maPath + trend + dots + extremes + xLabs +
+      trend + dots + extremes + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
       '<circle id="cursor" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
       '<rect id="hit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
