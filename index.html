@@ -775,7 +775,7 @@
     const area = line + " L" + sx(rows.length - 1).toFixed(1) + "," + (H - P.b) +
                  " L" + sx(0).toFixed(1) + "," + (H - P.b) + " Z";
 
-    const yTicks = [lo + pad, (lo + hi) / 2, hi - pad].map(v =>
+    const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
       '<text x="' + (P.l - 7) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
     ).join("");
@@ -949,7 +949,7 @@
     const sx = (d) => P.l + (d / maxDays) * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
-    const yTicks = [lo + pad, (lo + hi) / 2, hi - pad].map(v =>
+    const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
       '<text x="' + (P.l - 7) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
     ).join("");
