@@ -819,10 +819,28 @@
       const slope = den ? num / den : 0;
       const ty0 = my - slope * mx, ty1 = my + slope * (n - 1 - mx);
       if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
-      const tcol = ty1 > ty0 * 1.01 ? "#4caf7d" : ty1 < ty0 * 0.99 ? "#e05b5b" : "var(--muted)";
+      // 색은 "기간 변동 (추세)" 타일과 동일 규칙: +3% 이상 빨강(상승), -3% 이하 파랑(하락)
+      const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
+                   trendPct !== null && trendPct <= -3 ? "var(--down)" : "var(--muted)";
       trend = '<line x1="' + sx(0).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
         '" x2="' + sx(rows.length - 1).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
         '" stroke="' + tcol + '" stroke-width="1.5" stroke-dasharray="7 5" opacity=".75"/>';
+    }
+
+    // 최저·최고점 마커 — 타일의 "기간 최저/최고"와 같은 값(그래프에 그려지는 선 기준)
+    let extremes = "";
+    if (rows.length >= 2) {
+      const iMin = ys.indexOf(Math.min(...ys)), iMax = ys.indexOf(Math.max(...ys));
+      const mark = (i, kind) => {
+        const x = sx(i), y = sy(ys[i]);
+        const anchor = i < rows.length * 0.12 ? "start" : i > rows.length * 0.88 ? "end" : "middle";
+        const col = kind === "hi" ? "var(--up)" : "var(--down)";
+        const ty = kind === "hi" ? y - 8 : y + 16;
+        const lbl = (kind === "hi" ? "▲" : "▼") + fmtGold(ys[i]);
+        return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.6" fill="' + col + '" stroke="var(--surface)" stroke-width="1.4"/>' +
+          '<text x="' + x.toFixed(1) + '" y="' + ty.toFixed(1) + '" fill="' + col + '" font-size="9.5" font-weight="700" font-family="var(--mono)" text-anchor="' + anchor + '">' + lbl + '</text>';
+      };
+      if (iMax !== iMin) extremes = mark(iMax, "hi") + mark(iMin, "lo");
     }
 
     const bw = Math.max(2, Math.min(14, (W - P.l - P.r) / rows.length - 2));
@@ -839,7 +857,7 @@
       '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
       yTicks + marks + '<path d="' + area + '" fill="url(#g)"/>' +
       '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
-      trend + dots + xLabs +
+      trend + dots + extremes + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
       '<circle id="cursor" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
       '<rect id="hit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
