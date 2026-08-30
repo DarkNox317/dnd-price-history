@@ -821,15 +821,14 @@
       P.l + (i / (rows.length - 1)) * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
-    // 공백(미수집일·장시간 무거래)을 직선으로 잇지 않게 구간을 나눠 그림
-    // 일별: 하루 넘게 비면 끊음 / 1일 화면: 1시간(12버킷) 넘게 비면 끊음
+    // 일별 그래프에서 미수집일 공백을 직선으로 잇지 않게 구간을 나눠 그림
+    // (1일 화면은 거래가 뜸해도 항상 이어 그림 — 조각나면 보기 나쁨)
     const segs = [];
     {
       let start = 0;
       for (let i = 1; i <= rows.length; i++) {
         const gap = i === rows.length ? true :
-          (intraday ? (rows[i].b - rows[i - 1].b > 12)
-                    : ((new Date(rows[i].date) - new Date(rows[i - 1].date)) / 864e5 > 1));
+          (!intraday && (new Date(rows[i].date) - new Date(rows[i - 1].date)) / 864e5 > 1);
         if (gap) { segs.push([start, i - 1]); start = i; }
       }
     }
