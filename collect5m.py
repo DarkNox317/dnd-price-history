@@ -31,6 +31,8 @@ BACKFILL_WINDOW_DAYS = 15
 KEY = os.environ.get("DARKERDB_API_KEY", "").strip()
 
 
+_last_req = [0.0]
+
 def api_get(path, params):
     url = BASE + path + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={
@@ -38,6 +40,11 @@ def api_get(path, params):
         "X-Api-Key": KEY,
     })
     for attempt in range(5):
+        # 직전 요청 시작으로부터 REQUEST_GAP 이 지나도록만 대기 (왕복 시간을 낭비하지 않게)
+        wait = _last_req[0] + REQUEST_GAP - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        _last_req[0] = time.time()
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.loads(r.read().decode("utf-8"))
@@ -88,7 +95,6 @@ def sweep_window(frm, to, acc, item_id=None, max_pages=None):
         if not rows or page * PAGE_LIMIT >= total or (max_pages and page >= max_pages):
             return fetched, total
         page += 1
-        time.sleep(REQUEST_GAP)
 
 
 def collect_day(day, item_id=None, max_pages=None):
@@ -114,7 +120,6 @@ def collect_day(day, item_id=None, max_pages=None):
         print("  [%s UTC] %02d시 구간: %d건 수집 (구간 전체 %d건, 누적 %d건, 남은 시간 약 %d분)"
               % (dt.datetime.now(dt.timezone.utc).strftime("%H:%M:%S"),
                  h, n, total, grabbed, int(eta)), flush=True)
-        time.sleep(REQUEST_GAP)
     return acc, grabbed
 
 
