@@ -253,7 +253,7 @@
 
 <p class="note">
   전 서버 판매 기록을 수집해 5분 단위·일 단위로 집계(날짜는 UTC 기준) · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 판매 건수 ·
-  음영 띠 = 최저~최고 범위, 청록 곡선 = 이동평균(1일 화면 1시간 · 일별 7일), 점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 ·
+  청록 곡선 = 이동평균(1일 화면 1시간 · 일별 7일), 점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 ·
   붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
   시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
@@ -836,15 +836,6 @@
       rows.slice(a, b + 1).map((r, k) => (k ? "L" : "M") + sx(a + k).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ")
     ).join(" ");
 
-    // 최저~최고 범위 음영 띠 (변동 폭이 한눈에 보이게)
-    const band = segs.map(([a, b]) => {
-      if (b - a < 1) return "";
-      const d = [];
-      for (let i = a; i <= b; i++) d.push((i === a ? "M" : "L") + sx(i).toFixed(1) + "," + sy(rows[i].max).toFixed(1));
-      for (let i = b; i >= a; i--) d.push("L" + sx(i).toFixed(1) + "," + sy(rows[i].min).toFixed(1));
-      return '<path d="' + d.join(" ") + ' Z" fill="var(--accent)" opacity=".1"/>';
-    }).join("");
-
     // 이동평균 (1일 화면: 1시간 = 12버킷 / 일별: 7일)
     const win = intraday ? 12 : 7;
     let maPath = "";
@@ -934,7 +925,7 @@
 
     chart.innerHTML =
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="시세 차트">' +
-      yTicks + marks + band +
+      yTicks + marks +
       '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
       maPath + trend + dots + extremes + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
