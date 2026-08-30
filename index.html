@@ -733,7 +733,7 @@
   // 확대해서 잔물결을 크게 보여주지 않고, 변동을 실제 비율감 그대로 보여준다.
   // 데이터가 이 범위를 넘으면(진짜 큰 추세 변화) 2~98 분위까지 축을 넓히고,
   // 그것도 넘는 극단값(트롤 매물)만 가장자리에 눌러 그린다.
-  const AXIS_RATIO = 2.5;
+  const AXIS_RATIO = 2.0;
   function robustRange (meds) {
     const m = median(meds);
     let lo = m / AXIS_RATIO, hi = m * AXIS_RATIO;
