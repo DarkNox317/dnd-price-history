@@ -393,6 +393,19 @@
     }
     const lowDay = (v, id) => typCnt[id] >= 50 && v[3] < typCnt[id] * 0.2;
 
+    // 아이템별 평소 가격 — 평소의 10배를 넘거나 1/10 밑인 날은 골드 이송(RMT)·세탁 거래일로 보고
+    // 무버 랭킹에서 제외 (실거래라 그래프엔 그대로 보이지만, "시세 변동"은 아님)
+    const typPrice = {};
+    {
+      const acc = {};
+      for (const d of withData) {
+        const dm = dayMap[d];
+        for (const id in dm) { if (dm[id][0] > 0) (acc[id] = acc[id] || []).push(dm[id][0]); }
+      }
+      for (const id in acc) typPrice[id] = median(acc[id]);
+    }
+    const weirdPrice = (v, id) => typPrice[id] > 0 && (v[0] > typPrice[id] * 10 || v[0] < typPrice[id] / 10);
+
     const volAll = [...ids].sort((a, b) => day[b][3] - day[a][3]);
     const volVal = (id) => '<span class="val">' + day[id][3].toLocaleString() + '건 · ' + fmtGold(day[id][0]) + '</span>';
     RANKS.vol = { title: "거래량 TOP — " + L, rows: volAll.map(id => ({ id, val: volVal(id) })) };
@@ -403,7 +416,8 @@
       const prev = dayMap[Pd];
       const movers = ids
         .filter(id => prev[id] && prev[id][3] >= 5 && day[id][3] >= 5 && prev[id][0] > 0 &&
-                      !lowDay(prev[id], id) && !lowDay(day[id], id))
+                      !lowDay(prev[id], id) && !lowDay(day[id], id) &&
+                      !weirdPrice(prev[id], id) && !weirdPrice(day[id], id))
         .map(id => ({ id, from: prev[id][0], to: day[id][0],
                       pct: (day[id][0] - prev[id][0]) / prev[id][0] * 100 }));
       movers.sort((a, b) => b.pct - a.pct);
@@ -434,7 +448,8 @@
     if (Wd) {
       const wk = dayMap[Wd];
       const mv = ids.filter(id => wk[id] && wk[id][3] >= 5 && day[id][3] >= 5 && wk[id][0] > 0 &&
-                                  !lowDay(wk[id], id) && !lowDay(day[id], id))
+                                  !lowDay(wk[id], id) && !lowDay(day[id], id) &&
+                                  !weirdPrice(wk[id], id) && !weirdPrice(day[id], id))
         .map(id => ({ id, from: wk[id][0], to: day[id][0], pct: (day[id][0] - wk[id][0]) / wk[id][0] * 100 }));
       mv.sort((a, b) => b.pct - a.pct);
       wupsAll = mv.filter(m => m.pct >= 10);
@@ -464,6 +479,10 @@
       }
       for (const id in seriesMap) {
         let s = seriesMap[id];
+        if (s.length < 5) continue;
+        // 골드 이송 거래일(평소 가격 10배↑/10분의1↓) 제외 — 추세가 세탁 거래에 안 끌려가게
+        const pmed = median(s.map(p => p.med));
+        s = s.filter(p => p.med <= pmed * 10 && p.med >= pmed / 10);
         if (s.length < 5) continue;
         const cmed = median(s.map(p => p.cnt));
         if (cmed >= 50) {
