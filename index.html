@@ -211,6 +211,10 @@
         <div><h3>주간 급락 (7일 대비)</h3><div id="h_wdown"></div></div>
         <div><h3>거래량 급증 (평소 대비)</h3><div id="h_surge"></div></div>
       </div>
+      <div class="cols">
+        <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
+        <div><h3>자전거래 의심 (거래량 폭증 + 가격 정지)</h3><div id="h_wash"></div></div>
+      </div>
       <div id="h_favsec" hidden style="margin-top:18px">
         <h3>★ 즐겨찾기</h3>
         <div id="h_fav"></div>
@@ -422,6 +426,57 @@
       li(m.id, '<span class="val">' + m.cnt.toLocaleString() + '건 <b style="color:var(--ink)">×' +
         (Math.round(m.ratio * 10) / 10) + '</b></span>')).join("") :
       emptyLi(prevDays.length >= 2 ? "평소 대비 급증 없음" : "3일치가 쌓이면 표시돼");
+
+    // 시장 지수: 아이템별 일간 로그수익률의 중앙값을 연쇄 (거래 50건+ 아이템만, 시작일 = 100)
+    {
+      let level = 100;
+      const idxSeries = [{ d: withData[0], v: 100 }];
+      for (let i = 1; i < withData.length; i++) {
+        const a = dayMap[withData[i - 1]], b2 = dayMap[withData[i]];
+        const rets = [];
+        for (const id in b2) {
+          const pa = a[id], pb = b2[id];
+          if (pa && pa[3] >= 50 && pb[3] >= 50 && pa[0] > 0 && pb[0] > 0) rets.push(Math.log(pb[0] / pa[0]));
+        }
+        if (rets.length >= 30) level *= Math.exp(median(rets));
+        idxSeries.push({ d: withData[i], v: level });
+      }
+      const cur = idxSeries[idxSeries.length - 1].v;
+      const chg = cur - 100;
+      const IW = 300, IH = 56;
+      const vs = idxSeries.map(p => p.v);
+      const vlo = Math.min(...vs) * 0.995, vhi = Math.max(...vs) * 1.005;
+      const px2 = (i) => idxSeries.length === 1 ? IW / 2 : 4 + (i / (idxSeries.length - 1)) * (IW - 8);
+      const py2 = (v) => IH - 6 - ((v - vlo) / Math.max(1e-9, vhi - vlo)) * (IH - 12);
+      const path = idxSeries.map((p, i) => (i ? "L" : "M") + px2(i).toFixed(1) + "," + py2(p.v).toFixed(1)).join(" ");
+      const icls = chg >= 1 ? "up" : chg <= -1 ? "down" : "";
+      $("h_index").innerHTML =
+        '<div class="li" style="cursor:default"><span class="nm"><b style="font-family:var(--mono);font-size:1.05rem;color:var(--ink)">' +
+        (Math.round(cur * 10) / 10) + '</b> <span class="' + icls + '" style="font-weight:700;font-family:var(--mono)">' +
+        fmtPct(chg) + '</span></span></div>' +
+        '<svg viewBox="0 0 ' + IW + ' ' + IH + '" style="width:100%;height:auto" role="img" aria-label="시장 지수 추이">' +
+        '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+    }
+
+    // 자전거래(워시트레이딩) 의심: 거래량 5배↑ + 가격 변동 5% 미만 — 시세 조작의 전형적 시그니처
+    let wash = [];
+    if (Pd) {
+      const prev = dayMap[Pd];
+      for (const id of ids) {
+        const pa = prev[id];
+        if (!pa || pa[3] < 20 || pa[0] <= 0) continue;
+        const cnt = day[id][3];
+        if (cnt >= 100 && cnt >= pa[3] * 5 && Math.abs(day[id][0] - pa[0]) / pa[0] < 0.05) {
+          wash.push({ id, cnt, ratio: cnt / pa[3] });
+        }
+      }
+      wash.sort((a, b) => b.ratio - a.ratio);
+      wash = wash.slice(0, 6);
+    }
+    $("h_wash").innerHTML = wash.length ? wash.map(m =>
+      li(m.id, '<span class="val">' + m.cnt.toLocaleString() + '건 <b style="color:var(--ink)">×' +
+        (Math.round(m.ratio * 10) / 10) + '</b> 가격 그대로</span>')).join("") :
+      emptyLi(Pd ? "의심 패턴 없음" : "이틀치가 쌓이면 표시돼");
 
     $("placeholder").hidden = true;
     $("dash").hidden = false;
@@ -694,7 +749,8 @@
       const md = await loadMonth(m);
       for (const date in md) {
         const rec = md[date][currentItem];
-        if (rec) rows.push({ date, med: rec[0], min: rec[1], max: rec[2], cnt: rec[3] });
+        if (rec) rows.push({ date, med: rec[0], min: rec[1], max: rec[2], cnt: rec[3],
+                             p25: rec[4], p75: rec[5], vwap: rec[6] });   // v2 필드 (구 데이터엔 없음)
       }
     }
     rows.sort((a, b) => a.date < b.date ? -1 : 1);
@@ -740,31 +796,48 @@
         b: b[0],
         label: String(t.getUTCHours()).padStart(2, "0") + ":" + String(t.getUTCMinutes()).padStart(2, "0"),
         kd: t.toISOString().slice(5, 10).replace("-", "/"),
-        med: b[1], min: b[2], max: b[3], cnt: b[4]
+        med: b[1], min: b[2], max: b[3], cnt: b[4],
+        p25: b[5], p75: b[6], vwap: b[7]
       };
     });
   }
 
-  /* ── 패치 영향 분석 ── */
+  /* ── 패치 영향 분석 — 변화점 탐지 (CUSUM 계열 단일 변화점) ──
+     패치일 ±7일 창에서 "가격 수준(로그)이 실제로 꺾인 지점"을 통계적으로 찾고,
+     그 지점이 패치일 ±2일 안이며 분산 감소율이 충분할 때만 패치 영향으로 인정한다.
+     고정 전후 3일 비교보다 자연 변동을 패치 탓으로 오인하는 일이 훨씬 적다. */
   function analyzePatches (rows) {
-    if (rows.length < 2) return [];
+    if (rows.length < 5) return [];
     const first = rows[0].date, last = rows[rows.length - 1].date;
-    const byDate = Object.fromEntries(rows.map(r => [r.date, r]));
     const out = [];
+    const sse = (a) => {
+      if (!a.length) return 0;
+      const mu = a.reduce((s, v) => s + v, 0) / a.length;
+      return a.reduce((s, v) => s + (v - mu) * (v - mu), 0);
+    };
     for (const p of PATCHES) {
       if (!p.date || p.date < first || p.date > last) continue;
-      const before = [], after = [];
-      for (let k = 1; k <= 4; k++) {
-        const bd = shiftDate(p.date, -k), ad = shiftDate(p.date, k - 1);
-        if (byDate[bd] && before.length < 3) before.push(byDate[bd].med);
-        if (byDate[ad] && after.length < 3) after.push(byDate[ad].med);
+      const win = rows.filter(r => Math.abs((new Date(r.date) - new Date(p.date)) / 864e5) <= 7);
+      let delta = null, cp = false;
+      if (win.length >= 5) {
+        const xs = win.map(r => Math.log(r.med));
+        const total = sse(xs);
+        let bestK = -1, bestGain = 0;
+        for (let k = 2; k <= xs.length - 2; k++) {
+          const gain = total - sse(xs.slice(0, k)) - sse(xs.slice(k));
+          if (gain > bestGain) { bestGain = gain; bestK = k; }
+        }
+        if (bestK > 0 && total > 0 && bestGain / total >= 0.35) {
+          const dist = Math.abs((new Date(win[bestK].date) - new Date(p.date)) / 864e5);
+          if (dist <= 2) {
+            const mL = Math.exp(xs.slice(0, bestK).reduce((s, v) => s + v, 0) / bestK);
+            const mR = Math.exp(xs.slice(bestK).reduce((s, v) => s + v, 0) / (xs.length - bestK));
+            delta = (mR - mL) / mL * 100;
+            cp = true;
+          }
+        }
       }
-      let delta = null;
-      if (before.length && after.length) {
-        const b = median(before), a = median(after);
-        if (b > 0) delta = (a - b) / b * 100;
-      }
-      out.push({ ...p, delta });
+      out.push({ ...p, delta, cp });
     }
     return out.reverse();   // 과거 → 최신 순
   }
@@ -772,7 +845,7 @@
   const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
   function deltaWord (d) {
-    if (d === null) return ["데이터 부족", "flat"];
+    if (d === null) return ["변화 없음", "flat"];
     if (d >= 15) return ["급등", "up"];
     if (d >= 5) return ["상승", "up"];
     if (d <= -15) return ["급락", "down"];
@@ -788,14 +861,20 @@
   // 데이터가 이 범위를 넘으면(진짜 큰 추세 변화) 2~98 분위까지 축을 넓히고,
   // 그것도 넘는 극단값(트롤 매물)만 가장자리에 눌러 그린다.
   const AXIS_RATIO = 2.0;
+  // 확장 판정은 MAD(중앙값 절대편차) 기반 수정 z-점수 3.5 — 아이템별 변동성을 자동 반영하는
+  // 강건 통계 표준 기준 (Iglewicz-Hoaglin). 울타리 안의 진짜 값은 축에 담고 트롤 매물만 차단.
   function robustRange (meds) {
     const m = median(meds);
     let lo = m / AXIS_RATIO, hi = m * AXIS_RATIO;
-    const srt = [...meds].sort((a, b) => a - b);
-    const quant = (p) => srt[Math.min(srt.length - 1, Math.round(p * (srt.length - 1)))];
-    const q05 = quant(0.05), q95 = quant(0.95);
-    if (q05 < lo) lo = Math.max(0, q05 * 0.92);
-    if (q95 > hi) hi = q95 * 1.08;
+    const mad = median(meds.map(v => Math.abs(v - m)));
+    if (mad > 0) {
+      for (const v of meds) {
+        if (Math.abs(0.6745 * (v - m) / mad) <= 3.5) {
+          if (v < lo) lo = Math.max(0, v * 0.95);
+          if (v > hi) hi = v * 1.05;
+        }
+      }
+    }
     const pad = (hi - lo) * 0.06;
     return [lo, hi, pad];
   }
@@ -996,10 +1075,12 @@
         }
         const [word, cls2] = deltaWord(p.delta);
         const deltaTxt = p.delta === null ? "—" : fmtPct(p.delta);
+        const desc = p.cp ? "변화점 탐지 — 패치 시점 전후로 가격 수준 " + word
+                          : "패치 시점에 통계적으로 뚜렷한 가격 변화점 없음";
         return '<div class="pt"><span class="d">' + p.date + '</span>' +
           '<span class="t">' + p.title + '</span>' +
           '<span class="delta ' + cls2 + '">' + deltaTxt + '</span>' +
-          '<span class="desc">패치 전 3일 대비 후 3일 중앙값 ' + word + '</span></div>';
+          '<span class="desc">' + desc + '</span></div>';
       }).join("");
     }
 
@@ -1020,6 +1101,7 @@
       const patch = patchByDate[r.date];
       tip.textContent = (r.label ? r.kd + " " + r.label + " (한국시간)" : r.date) + (patch ? "  ◆ " + patch.title : "") +
         "\n중앙값 " + fmtGold(r.med) + "  (" + fmtGold(r.min) + "~" + fmtGold(r.max) + ")\n거래 " + r.cnt.toLocaleString() + "건" +
+        (r.vwap != null ? "\n체결평균 " + fmtGold(r.vwap) + " · 중간범위 " + fmtGold(r.p25) + "~" + fmtGold(r.p75) : "") +
         (lowSet.has(i) ? "\n⚠ 표본 부족 — 평소 거래량 대비 매우 적음 (수집원 결손 가능)" : "");
       tip.style.opacity = "1";
       tip.style.left = Math.min(rect.width - 170, Math.max(0, (sx(i) / W) * rect.width + 12)) + "px";
