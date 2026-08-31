@@ -1102,7 +1102,8 @@
   async function selectItem (id) {
     currentItem = id;
     hits.innerHTML = "";
-    const [ko, en, rar] = CATALOG[id];
+    // 카탈로그에 없는 아이템(이름 미등록 신규)도 열리게 폴백
+    const [ko, en, rar] = CATALOG[id] || [prettyId(id), "", ""];
     q.value = ko;
     $("home").hidden = true;
     $("rankview").hidden = true;
