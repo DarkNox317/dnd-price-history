@@ -1135,11 +1135,16 @@
     }
 
     // 패치·시즌 마커 (기간 내 배포일) — 핫픽스는 붉은 점선, 시즌 시작은 금색 실선 (1일 모드에선 생략)
+    // 그 날짜에 거래 데이터가 없어도 날짜 비례 위치에 항상 그린다
     const patchByDate = {};
     const patchAnalysis = intraday ? [] : analyzePatches(gi.map(i => rows[i]));   // 패치 영향도 표본 부족일 제외
-    const marks = patchAnalysis.filter(p => dateIndex[p.date] !== undefined).map(p => {
+    const t0d = rows.length ? new Date(rows[0].date || 0).getTime() : 0;
+    const t1d = rows.length ? new Date(rows[rows.length - 1].date || 0).getTime() : 0;
+    const dateX = (dstr) => t1d === t0d ? (P.l + W - P.r) / 2 :
+      P.l + ((new Date(dstr).getTime() - t0d) / (t1d - t0d)) * (W - P.l - P.r);
+    const marks = patchAnalysis.map(p => {
       patchByDate[p.date] = p;
-      const x = sx(dateIndex[p.date]).toFixed(1);
+      const x = dateX(p.date).toFixed(1);
       if (p.kind === "season") {
         const num = (p.title.match(/#(\d+)/) || [])[1] || "?";
         return '<line x1="' + x + '" y1="' + (P.t - 4) + '" x2="' + x + '" y2="' + (H - P.b) +
