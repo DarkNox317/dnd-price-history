@@ -1142,6 +1142,17 @@
     }).filter(sr => sr.rows.length > 0);
     seriesList.sort((a, b) => a.season.date < b.season.date ? 1 : -1);   // [0] = 최신 시즌
 
+    // 표본 부족일: 시즌 시리즈별로 각각 판정 (일반 화면과 동일 규칙 — 기간 중앙값 거래량의 20% 미만)
+    for (const sr of seriesList) {
+      sr.low = new Set();
+      if (sr.rows.length >= 5) {
+        const cmed = median(sr.rows.map(r => r.cnt));
+        if (cmed >= 50) sr.rows.forEach((r, k) => { if (r.cnt < cmed * 0.2) sr.low.add(k); });
+      }
+      sr.good = sr.rows.map((_, k) => k).filter(k => !sr.low.has(k));
+      if (sr.good.length < 2) sr.good = sr.rows.map((_, k) => k);
+    }
+
     $("nodata").hidden = seriesList.length > 0;
     if (!seriesList.length) return;
 
@@ -1149,7 +1160,7 @@
     // 현재 시즌의 "앞으로 남은 구간"이 보이게)
     const maxDays = Math.max(...selected.map(s => dayOf(seasonRange(s)[1], s.date)), 7);
 
-    const allMeds = seriesList.flatMap(sr => sr.rows.map(r => r.med));
+    const allMeds = seriesList.flatMap(sr => sr.good.map(k => sr.rows[k].med));   // 표본 부족일 제외
     const [lo, hi, pad] = robustRange(allMeds);
 
     const sx = (d) => P.l + (d / maxDays) * (W - P.l - P.r);
@@ -1172,8 +1183,10 @@
     const lines = [...seriesList].reverse().map((sr) => {
       const latest = sr === seriesList[0];
       const path = sr.rows.map((r, k) => (k ? "L" : "M") + sx(r.d).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ");
-      const dots = sr.rows.length <= 60 ? sr.rows.map(r =>
-        '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.4" fill="' + sr.color + '"/>').join("") : "";
+      const dots = sr.rows.length <= 60 ? sr.rows.map((r, k) =>
+        sr.low.has(k)
+          ? '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.6" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="2 1.5"/>'
+          : '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.4" fill="' + sr.color + '"/>').join("") : "";
       return '<path d="' + path + '" fill="none" stroke="' + sr.color + '" stroke-width="' + (latest ? 2.4 : 1.6) +
         '" stroke-linejoin="round" opacity="' + (latest ? 1 : 0.8) + '"/>' + dots;
     }).join("");
@@ -1185,11 +1198,12 @@
       '<rect id="hit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
       '</svg>';
 
-    // 요약 타일: 가장 최신 시즌 기준
+    // 요약 타일: 가장 최신 시즌 기준 (표본 부족일 제외)
     const cur = seriesList[0];
-    const k = Math.min(3, cur.rows.length);
-    const endMed = median(cur.rows.slice(-k).map(r => r.med));
-    const startMed = median(cur.rows.slice(0, k).map(r => r.med));
+    const g = cur.good;
+    const k = Math.min(3, g.length);
+    const endMed = median(g.slice(-k).map(i => cur.rows[i].med));
+    const startMed = median(g.slice(0, k).map(i => cur.rows[i].med));
     const change = startMed > 0 ? (endMed - startMed) / startMed * 100 : 0;
     tiles.innerHTML =
       tile("시즌 " + cur.season.num + " 최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
@@ -1207,8 +1221,10 @@
       d = Math.max(0, Math.min(maxDays, d));
       cross.setAttribute("x1", sx(d)); cross.setAttribute("x2", sx(d)); cross.setAttribute("opacity", ".3");
       const linesTxt = seriesList.map(sr => {
-        const r = sr.rows.find(x => x.d === d);
-        return "시즌" + sr.season.num + " " + (r ? fmtGold(r.med) + " (" + r.cnt + "건)" : "—");
+        const kIdx = sr.rows.findIndex(x => x.d === d);
+        const r = kIdx >= 0 ? sr.rows[kIdx] : null;
+        return "시즌" + sr.season.num + " " + (r ? fmtGold(r.med) + " (" + r.cnt + "건)" +
+          (sr.low.has(kIdx) ? " ⚠표본부족" : "") : "—");
       });
       tip.textContent = d + "일차 (" + (Math.floor(d / 7) + 1) + "주차)\n" + linesTxt.join("\n");
       tip.style.opacity = "1";
