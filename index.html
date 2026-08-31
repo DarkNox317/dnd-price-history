@@ -935,9 +935,16 @@
         if (gap) { segs.push([start, i - 1]); start = i; }
       }
     }
-    const line = segs.map(([a, b]) =>
-      rows.slice(a, b + 1).map((r, k) => (k ? "L" : "M") + sx(a + k).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ")
-    ).join(" ");
+    // 선: 표본 부족 점에 닿는 구간은 점선으로 (신뢰 구간과 시각적으로 구분)
+    let lineSolid = "", lineDash = "";
+    for (const [a, b] of segs) {
+      for (let i = a; i < b; i++) {
+        const piece = "M" + sx(i).toFixed(1) + "," + sy(rows[i].med).toFixed(1) +
+                      "L" + sx(i + 1).toFixed(1) + "," + sy(rows[i + 1].med).toFixed(1) + " ";
+        if (lowSet.has(i) || lowSet.has(i + 1)) lineDash += piece; else lineSolid += piece;
+      }
+      if (a === b) lineSolid += "M" + sx(a).toFixed(1) + "," + sy(rows[a].med).toFixed(1) + " ";
+    }
 
 
     const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
@@ -1034,7 +1041,8 @@
     chart.innerHTML =
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="시세 차트">' +
       yTicks + marks +
-      '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<path d="' + lineSolid + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>' +
+      (lineDash ? '<path d="' + lineDash + '" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-dasharray="4 4" opacity=".8"/>' : "") +
       trend + dots + extremes + xLabs +
       '<line id="cross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
       '<circle id="cursor" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>' +
@@ -1182,13 +1190,20 @@
     // 과거 시즌부터 그려서 최신 시즌 선이 맨 위에 오게
     const lines = [...seriesList].reverse().map((sr) => {
       const latest = sr === seriesList[0];
-      const path = sr.rows.map((r, k) => (k ? "L" : "M") + sx(r.d).toFixed(1) + "," + sy(r.med).toFixed(1)).join(" ");
+      let pSolid = "", pDash = "";
+      for (let k = 0; k < sr.rows.length - 1; k++) {
+        const piece = "M" + sx(sr.rows[k].d).toFixed(1) + "," + sy(sr.rows[k].med).toFixed(1) +
+                      "L" + sx(sr.rows[k + 1].d).toFixed(1) + "," + sy(sr.rows[k + 1].med).toFixed(1) + " ";
+        if (sr.low.has(k) || sr.low.has(k + 1)) pDash += piece; else pSolid += piece;
+      }
       const dots = sr.rows.length <= 60 ? sr.rows.map((r, k) =>
         sr.low.has(k)
           ? '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.6" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="2 1.5"/>'
           : '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.4" fill="' + sr.color + '"/>').join("") : "";
-      return '<path d="' + path + '" fill="none" stroke="' + sr.color + '" stroke-width="' + (latest ? 2.4 : 1.6) +
-        '" stroke-linejoin="round" opacity="' + (latest ? 1 : 0.8) + '"/>' + dots;
+      return '<path d="' + pSolid + '" fill="none" stroke="' + sr.color + '" stroke-width="' + (latest ? 2.4 : 1.6) +
+        '" stroke-linejoin="round" opacity="' + (latest ? 1 : 0.8) + '"/>' +
+        (pDash ? '<path d="' + pDash + '" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 4" opacity=".8"/>' : "") +
+        dots;
     }).join("");
 
     chart.innerHTML =
