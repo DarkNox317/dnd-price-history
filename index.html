@@ -461,8 +461,10 @@
         for (const p of s) { num += (p.t - mt) * (p.med - my); den += (p.t - mt) * (p.t - mt); }
         if (!den) continue;
         const slope = num / den;
-        const ty0 = my + slope * (s[0].t - mt), ty1 = my + slope * (s[n - 1].t - mt);
+        const ty0 = my + slope * (s[0].t - mt);
+        let ty1 = my + slope * (s[n - 1].t - mt);
         if (ty0 <= 0) continue;
+        if (ty1 < 0) ty1 = 0;                       // 가격은 -100% 밑으로 못 떨어짐
         const pct = (ty1 - ty0) / ty0 * 100;
         const rec = { id, pct, to: s[n - 1].med, days: n };
         if (pct >= 10) mupsAll.push(rec);
