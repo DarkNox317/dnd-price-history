@@ -254,7 +254,7 @@
 
 <p class="note">
   전 서버 판매 기록을 수집해 5분 단위·일 단위로 집계 · 날짜 구분은 UTC 기준(= 한국시간 09시~다음날 09시), <b>1일 화면의 시각은 한국시간</b> · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 판매 건수 ·
-  점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 ·
+  점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 · 속이 빈 회색 점 = <b>표본 부족</b>(그 아이템 평소 거래량의 20% 미만 — 원본 데이터 결손 가능성) ·
   붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
   시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
@@ -890,8 +890,18 @@
              '<path d="M' + x + ' ' + (P.t - 2) + ' l4 5 -4 5 -4 -5 z" fill="var(--mark)"/>';
     }).join("");
 
+    // 표본 부족 감지 (일별 화면): 그 아이템의 기간 중앙값 거래량 대비 20% 미만인 날
+    // → 수집원(DarkerDB) 결손 가능성이 있어 가격 표본 신뢰도가 낮음
+    const lowSet = new Set();
+    if (!intraday && rows.length >= 5) {
+      const cmed = median(rows.map(r => r.cnt));
+      if (cmed >= 50) rows.forEach((r, i) => { if (r.cnt < cmed * 0.2) lowSet.add(i); });
+    }
+
     const dots = rows.length <= 60 ? rows.map((r, i) =>
-      '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>'
+      lowSet.has(i)
+        ? '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="2 1.5"/>'
+        : '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>'
     ).join("") : "";
 
     // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
@@ -1005,7 +1015,8 @@
       cur.setAttribute("cx", sx(i)); cur.setAttribute("cy", sy(r.med)); cur.setAttribute("opacity", "1");
       const patch = patchByDate[r.date];
       tip.textContent = (r.label ? r.kd + " " + r.label + " (한국시간)" : r.date) + (patch ? "  ◆ " + patch.title : "") +
-        "\n중앙값 " + fmtGold(r.med) + "  (" + fmtGold(r.min) + "~" + fmtGold(r.max) + ")\n거래 " + r.cnt.toLocaleString() + "건";
+        "\n중앙값 " + fmtGold(r.med) + "  (" + fmtGold(r.min) + "~" + fmtGold(r.max) + ")\n거래 " + r.cnt.toLocaleString() + "건" +
+        (lowSet.has(i) ? "\n⚠ 표본 부족 — 평소 거래량 대비 매우 적음 (수집원 결손 가능)" : "");
       tip.style.opacity = "1";
       tip.style.left = Math.min(rect.width - 170, Math.max(0, (sx(i) / W) * rect.width + 12)) + "px";
       tip.style.top = Math.max(0, (sy(r.med) / H) * rect.height - 48) + "px";
