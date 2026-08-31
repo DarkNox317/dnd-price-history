@@ -988,13 +988,19 @@
   let NAME_INDEX = [];          // [{ko, en, variants: [{id, rar}]}]
   let hitGroups = [], hitSel = -1;
 
+  // 보석류의 품질 접미사 — 이걸 떼고 같은 보석끼리 한 줄로 묶는다 (품질=등급 1:1 대응)
+  const QUAL_KO = /\s*\((궁극의|금이 간|완벽한|왕실의|정교한|평범한|흠이 있는)\)\s*$/;
+  const QUAL_EN = /\s*\((Ultimate|Cracked|Perfect|Royal|Exquisite|Normal|Flawed)\)\s*$/;
+
   function buildNameIndex () {
     const map = new Map();
     for (const id in CATALOG) {
       const [ko, en, rar] = CATALOG[id];
-      const key = ko + "|" + en;
-      if (!map.has(key)) map.set(key, { ko, en, variants: [] });
-      map.get(key).variants.push({ id, rar: rar || "" });
+      const m = ko.match(QUAL_KO);
+      const bKo = ko.replace(QUAL_KO, ""), bEn = en.replace(QUAL_EN, "");
+      const key = bKo + "|" + bEn;
+      if (!map.has(key)) map.set(key, { ko: bKo, en: bEn, variants: [] });
+      map.get(key).variants.push({ id, rar: rar || "", lbl: m ? m[1] : "" });
     }
     for (const g of map.values()) {
       g.variants.sort((a, b) => (RANK[a.rar] ?? 9) - (RANK[b.rar] ?? 9));
@@ -1121,7 +1127,7 @@
     $("v_rswitch").innerHTML = (grp ? grp.variants : []).map(v =>
       '<span class="rsw" data-id="' + v.id + '" data-on="' + (v.id === id ? 1 : 0) + '">' +
       '<span class="rdot" style="background:' + (RARITY_COLOR[v.rar] || "#999") + '"></span>' +
-      (RARITY_KO[v.rar] || v.rar || "기본") + '</span>').join("");
+      (v.lbl || RARITY_KO[v.rar] || v.rar || "기본") + '</span>').join("");
 
     await render();
   }
