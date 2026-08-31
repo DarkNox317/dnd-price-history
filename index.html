@@ -1055,11 +1055,12 @@
              '<path d="M' + x + ' ' + (P.t - 2) + ' l4 5 -4 5 -4 -5 z" fill="var(--mark)"/>';
     }).join("");
 
-    const dots = rows.length <= 60 ? rows.map((r, i) =>
+    // 일반 지점엔 점을 찍지 않고 선만 — 표본 부족 지점만 속 빈 회색 점으로 표시
+    const dots = rows.map((r, i) =>
       lowSet.has(i)
         ? '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="2 1.5"/>'
-        : '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>'
-    ).join("") : "";
+        : ""
+    ).join("");
 
     // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
     // 기울기의 시작→끝 변화율은 "기간 변동" 타일에도 쓰인다
@@ -1264,10 +1265,10 @@
                       "L" + sx(sr.rows[k + 1].d).toFixed(1) + "," + sy(sr.rows[k + 1].med).toFixed(1) + " ";
         if (sr.low.has(k) || sr.low.has(k + 1)) pDash += piece; else pSolid += piece;
       }
-      const dots = sr.rows.length <= 60 ? sr.rows.map((r, k) =>
+      const dots = sr.rows.map((r, k) =>
         sr.low.has(k)
           ? '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.6" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="2 1.5"/>'
-          : '<circle cx="' + sx(r.d).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="2.4" fill="' + sr.color + '"/>').join("") : "";
+          : "").join("");
       return '<path d="' + pSolid + '" fill="none" stroke="' + sr.color + '" stroke-width="' + (latest ? 2.4 : 1.6) +
         '" stroke-linejoin="round" opacity="' + (latest ? 1 : 0.8) + '"/>' +
         (pDash ? '<path d="' + pDash + '" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 4" opacity=".8"/>' : "") +
