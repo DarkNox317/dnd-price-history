@@ -511,7 +511,10 @@
 
   /* ── 전체 순위 보기 ── */
   const RANKS = {};
+  let currentRank = null;      // 지금 열려 있는 순위 화면
+  let NAV_ORIGIN = "home";     // 아이템 화면에 "어디서" 들어왔는지 (← 버튼 복귀용)
   function showRank (key) {
+    currentRank = key;
     const r = RANKS[key];
     if (!r || !r.rows.length) return;
     $("home").hidden = true;
@@ -537,7 +540,7 @@
   });
   $("rank-list").addEventListener("click", (ev) => {
     const el = ev.target.closest(".li");
-    if (el && el.dataset.id) selectItem(el.dataset.id);
+    if (el && el.dataset.id) { NAV_ORIGIN = currentRank; selectItem(el.dataset.id); }
   });
 
   /* ── 즐겨찾기 섹션 (홈 하단) ── */
@@ -647,7 +650,7 @@
   });
   q.addEventListener("keydown", (ev) => {
     if (ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 확정 Enter 는 무시
-    if (ev.key === "Enter" && hitGroups.length) selectItem(resolveId(hitGroups[Math.max(0, hitSel)]));
+    if (ev.key === "Enter" && hitGroups.length) { NAV_ORIGIN = "home"; selectItem(resolveId(hitGroups[Math.max(0, hitSel)])); }
     if (ev.key === "ArrowDown") { hitSel = Math.min(hitGroups.length - 1, hitSel + 1); paintSel(); ev.preventDefault(); }
     if (ev.key === "ArrowUp") { hitSel = Math.max(0, hitSel - 1); paintSel(); ev.preventDefault(); }
     if (ev.key === "Escape") hits.innerHTML = "";
@@ -655,19 +658,24 @@
   function paintSel () { [...hits.children].forEach((el, i) => el.classList.toggle("on", i === hitSel)); }
   hits.addEventListener("click", (ev) => {
     const el = ev.target.closest(".hit");
-    if (el) selectItem(resolveId(hitGroups[+el.dataset.i]));
+    if (el) { NAV_ORIGIN = "home"; selectItem(resolveId(hitGroups[+el.dataset.i])); }
   });
   document.addEventListener("click", (ev) => { if (!ev.target.closest(".searchbox")) hits.innerHTML = ""; });
 
   // 홈 대시보드 목록 클릭 → 해당 아이템, ← 버튼 → 홈
   document.getElementById("home").addEventListener("click", (ev) => {
     const el = ev.target.closest(".li");
-    if (el && el.dataset.id) selectItem(el.dataset.id);
+    if (el && el.dataset.id) { NAV_ORIGIN = "home"; selectItem(el.dataset.id); }
   });
   document.getElementById("btn-home").addEventListener("click", () => {
     currentItem = null;
     q.value = "";
     $("view").hidden = true;
+    // 순위 화면에서 들어온 아이템이면 그 순위 화면으로 복귀
+    if (NAV_ORIGIN !== "home" && RANKS[NAV_ORIGIN] && RANKS[NAV_ORIGIN].rows.length) {
+      showRank(NAV_ORIGIN);
+      return;
+    }
     $("home").hidden = false;
     renderFavs();
   });
