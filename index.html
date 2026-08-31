@@ -235,7 +235,8 @@
       <button id="rank-back" type="button" title="홈으로">←</button>
       <h2 id="rank-title"></h2>
     </div>
-    <div id="rank-list" style="margin-top:.8rem"></div>
+    <div class="ranges" id="rank-filter" style="margin:.7rem 0 .3rem"></div>
+    <div id="rank-list" style="margin-top:.5rem"></div>
   </div>
   <div id="view" hidden>
     <div class="item-head">
@@ -243,6 +244,7 @@
       <span class="rdot" id="v_dot"></span>
       <h2 id="v_ko"></h2>
       <span class="en" id="v_en"></span>
+      <span class="en" id="v_type" style="border:1px solid var(--edge);border-radius:999px;padding:.1rem .5rem"></span>
       <button id="btn-fav" type="button" title="즐겨찾기"
         style="background:none;border:none;cursor:pointer;font-size:19px;line-height:1;padding:2px 4px;color:var(--muted)">☆</button>
       <span class="rswitch" id="v_rswitch"></span>
@@ -570,25 +572,47 @@
 
   /* ── 전체 순위 보기 ── */
   const RANKS = {};
+  const TYPE_KO = { weapon: "무기", armor: "방어구", accessory: "장신구", utility: "소모품·도구", misc: "재료·기타" };
   let currentRank = null;      // 지금 열려 있는 순위 화면
+  let rankFilter = "all";      // 순위 화면 카테고리 필터
   let NAV_ORIGIN = "home";     // 아이템 화면에 "어디서" 들어왔는지 (← 버튼 복귀용)
-  function showRank (key) {
-    currentRank = key;
-    const r = RANKS[key];
-    if (!r || !r.rows.length) return;
-    $("home").hidden = true;
-    $("view").hidden = true;
-    $("rankview").hidden = false;
-    $("rank-title").textContent = r.title + " (" + r.rows.length.toLocaleString() + "개)";
-    $("rank-list").innerHTML = r.rows.map((x, i) => {
+
+  function renderRankList () {
+    const r = RANKS[currentRank];
+    if (!r) return;
+    const rows = rankFilter === "all" ? r.rows :
+      r.rows.filter(x => (CATALOG[x.id] || [])[3] === rankFilter);
+    $("rank-title").textContent = r.title + " (" + rows.length.toLocaleString() + "개)";
+    $("rank-filter").innerHTML = ['all', 'weapon', 'armor', 'accessory', 'utility', 'misc'].map(t =>
+      '<button class="rng" data-type="' + t + '" data-on="' + (rankFilter === t ? 1 : 0) + '" type="button">' +
+      (t === "all" ? "전체" : TYPE_KO[t]) + '</button>').join("");
+    $("rank-list").innerHTML = rows.map((x, i) => {
       const [ko, , rar] = CATALOG[x.id] || [x.id, "", ""];
       return '<div class="li" data-id="' + x.id + '"><span class="rankno">' + (i + 1) + '</span>' +
         '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
         '<span class="nm">' + ko + ' <small style="color:var(--muted)">' + (RARITY_KO[rar] || "") + '</small></span>' +
         x.val + '</div>';
-    }).join("");
+    }).join("") || '<div class="li" style="cursor:default;color:var(--muted)">이 분류엔 해당 아이템이 없어</div>';
+  }
+
+  function showRank (key) {
+    const r = RANKS[key];
+    if (!r || !r.rows.length) return;
+    if (currentRank !== key) rankFilter = "all";   // 다른 순위로 이동하면 필터 초기화
+    currentRank = key;
+    $("home").hidden = true;
+    $("view").hidden = true;
+    $("rankview").hidden = false;
+    renderRankList();
     window.scrollTo(0, 0);
   }
+
+  $("rank-filter").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-type]");
+    if (!b) return;
+    rankFilter = b.dataset.type;
+    renderRankList();
+  });
   $("dash").addEventListener("click", (ev) => {
     const h = ev.target.closest(".rankable");
     if (h) showRank(h.dataset.rank);
@@ -763,6 +787,8 @@
     $("view").hidden = false;
     $("v_ko").textContent = ko;
     $("v_en").textContent = en;
+    $("v_type").textContent = TYPE_KO[(CATALOG[id] || [])[3]] || "";
+    $("v_type").hidden = !$("v_type").textContent;
     $("v_dot").style.background = RARITY_COLOR[rar] || "#999";
     paintFavBtn();
 
