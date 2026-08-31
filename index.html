@@ -217,8 +217,8 @@
         <div><h3 class="rankable" data-rank="surge">거래량 급증 (평소 대비) <span class="more">전체 ▸</span></h3><div id="h_surge"></div></div>
       </div>
       <div class="cols">
-        <div><h3 class="rankable" data-rank="mup">월간 급등 (30일 대비) <span class="more">전체 ▸</span></h3><div id="h_mup"></div></div>
-        <div><h3 class="rankable" data-rank="mdown">월간 급락 (30일 대비) <span class="more">전체 ▸</span></h3><div id="h_mdown"></div></div>
+        <div><h3 class="rankable" data-rank="mup">월간 급등 (최근 30일 추세) <span class="more">전체 ▸</span></h3><div id="h_mup"></div></div>
+        <div><h3 class="rankable" data-rank="mdown">월간 급락 (최근 30일 추세) <span class="more">전체 ▸</span></h3><div id="h_mdown"></div></div>
       </div>
       <div class="cols">
         <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
@@ -429,26 +429,58 @@
     RANKS.wup = { title: "주간 급등 전체 — " + (Wd || "") + " → " + L, rows: wupsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
     RANKS.wdown = { title: "주간 급락 전체 — " + (Wd || "") + " → " + L, rows: wdownsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
 
-    // 월간 무버: ~30일 전 수집일과 비교 (±20% 이상)
-    let Md = null;
-    for (let i = idxL - 1; i >= 0; i--) {
-      if ((new Date(L) - new Date(withData[i])) / 864e5 >= 27) { Md = withData[i]; break; }
-    }
+    // 월간 무버: 최근 최대 30일 구간의 추세선(최소제곱) 기울기 기준.
+    // 자료가 30일 미만이면 있는 날짜만으로 계산 (아이템당 최소 5일 필요).
+    // 지점은 거래 5건+ 인 날만 쓰고, 표본 부족일(평소 거래량 20% 미만)은 제외.
+    const mDays = withData.slice(-30);
     let mupsAll = [], mdownsAll = [];
-    if (Md) {
-      const mo = dayMap[Md];
-      const mv2 = ids.filter(id => mo[id] && mo[id][3] >= 5 && day[id][3] >= 5 && mo[id][0] > 0)
-        .map(id => ({ id, from: mo[id][0], to: day[id][0], pct: (day[id][0] - mo[id][0]) / mo[id][0] * 100 }));
-      mv2.sort((a, b) => b.pct - a.pct);
-      mupsAll = mv2.filter(m => m.pct >= 20);
-      mdownsAll = mv2.filter(m => m.pct <= -20).reverse();
+    if (mDays.length >= 5) {
+      const t0 = new Date(mDays[0]).getTime();
+      const span = Math.max(1, new Date(mDays[mDays.length - 1]).getTime() - t0);
+      const seriesMap = {};
+      for (const d of mDays) {
+        const dm = dayMap[d];
+        const tt = (new Date(d).getTime() - t0) / span;
+        for (const id in dm) {
+          const v = dm[id];
+          if (v[3] >= 5 && v[0] > 0) (seriesMap[id] = seriesMap[id] || []).push({ t: tt, med: v[0], cnt: v[3] });
+        }
+      }
+      for (const id in seriesMap) {
+        let s = seriesMap[id];
+        if (s.length < 5) continue;
+        const cmed = median(s.map(p => p.cnt));
+        if (cmed >= 50) {
+          const f = s.filter(p => p.cnt >= cmed * 0.2);
+          if (f.length >= 5) s = f;
+        }
+        const n = s.length;
+        const mt = s.reduce((a, p) => a + p.t, 0) / n;
+        const my = s.reduce((a, p) => a + p.med, 0) / n;
+        let num = 0, den = 0;
+        for (const p of s) { num += (p.t - mt) * (p.med - my); den += (p.t - mt) * (p.t - mt); }
+        if (!den) continue;
+        const slope = num / den;
+        const ty0 = my + slope * (s[0].t - mt), ty1 = my + slope * (s[n - 1].t - mt);
+        if (ty0 <= 0) continue;
+        const pct = (ty1 - ty0) / ty0 * 100;
+        const rec = { id, pct, to: s[n - 1].med, days: n };
+        if (pct >= 10) mupsAll.push(rec);
+        else if (pct <= -10) mdownsAll.push(rec);
+      }
+      mupsAll.sort((a, b) => b.pct - a.pct);
+      mdownsAll.sort((a, b) => a.pct - b.pct);
     }
-    RANKS.mup = { title: "월간 급등 전체 — " + (Md || "") + " → " + L, rows: mupsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
-    RANKS.mdown = { title: "월간 급락 전체 — " + (Md || "") + " → " + L, rows: mdownsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
-    $("h_mup").innerHTML = mupsAll.length ? mupsAll.slice(0, 6).map(m => li(m.id, moverVal(m, "val up"))).join("") :
-      emptyLi(Md ? "±20% 이상 변동 없음" : "30일치가 쌓이면 표시돼");
-    $("h_mdown").innerHTML = mdownsAll.length ? mdownsAll.slice(0, 6).map(m => li(m.id, moverVal(m, "val down"))).join("") :
-      emptyLi(Md ? "±20% 이상 변동 없음" : "30일치가 쌓이면 표시돼");
+    const trendValHtml = (m, cls) => '<span class="val">' + m.days + '일 · ' + fmtGold(m.to) +
+      ' <span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
+    RANKS.mup = { title: "월간 추세 급등 전체 — 최근 " + mDays.length + "일 추세 기준",
+                  rows: mupsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val up") })) };
+    RANKS.mdown = { title: "월간 추세 급락 전체 — 최근 " + mDays.length + "일 추세 기준",
+                    rows: mdownsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val down") })) };
+    $("h_mup").innerHTML = mupsAll.length ? mupsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val up"))).join("") :
+      emptyLi(mDays.length >= 5 ? "추세 +10% 이상 없음" : "5일치가 쌓이면 표시돼");
+    $("h_mdown").innerHTML = mdownsAll.length ? mdownsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val down"))).join("") :
+      emptyLi(mDays.length >= 5 ? "추세 -10% 이하 없음" : "5일치가 쌓이면 표시돼");
     $("h_wup").innerHTML = wups.length ? wups.map(m => li(m.id, moverVal(m, "val up"))).join("") :
       emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
     $("h_wdown").innerHTML = wdowns.length ? wdowns.map(m => li(m.id, moverVal(m, "val down"))).join("") :
