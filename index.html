@@ -917,20 +917,28 @@
   // 데이터가 이 범위를 넘으면(진짜 큰 추세 변화) 2~98 분위까지 축을 넓히고,
   // 그것도 넘는 극단값(트롤 매물)만 가장자리에 눌러 그린다.
   const AXIS_RATIO = 2.0;
-  // 확장 판정은 MAD(중앙값 절대편차) 기반 수정 z-점수 3.5 — 아이템별 변동성을 자동 반영하는
-  // 강건 통계 표준 기준 (Iglewicz-Hoaglin). 울타리 안의 진짜 값은 축에 담고 트롤 매물만 차단.
-  function robustRange (meds) {
-    const m = median(meds);
+  // 신뢰 판정: 거래 5건 이상인 지점의 중앙값은 무조건 신뢰 (트롤 매물 하나로는 못 움직이는 값).
+  // 5건 미만인 지점만 MAD 기반 수정 z-점수 3.5 (Iglewicz-Hoaglin)로 걸러 극단값을 차단.
+  function trustSet (pts) {           // pts: [{med, cnt}] → 신뢰 지점 인덱스 Set
+    const medsArr = pts.map(p => p.med);
+    const m = median(medsArr);
+    const mad = median(medsArr.map(v => Math.abs(v - m)));
+    const t = new Set();
+    pts.forEach((p, i) => {
+      if (p.cnt >= 5 || mad === 0 || Math.abs(0.6745 * (p.med - m) / mad) <= 3.5) t.add(i);
+    });
+    return t;
+  }
+  function robustRange (pts) {        // pts: [{med, cnt}] → [lo, hi, pad]
+    const m = median(pts.map(p => p.med));
     let lo = m / AXIS_RATIO, hi = m * AXIS_RATIO;
-    const mad = median(meds.map(v => Math.abs(v - m)));
-    if (mad > 0) {
-      for (const v of meds) {
-        if (Math.abs(0.6745 * (v - m) / mad) <= 3.5) {
-          if (v < lo) lo = Math.max(0, v * 0.95);
-          if (v > hi) hi = v * 1.05;
-        }
+    const t = trustSet(pts);
+    pts.forEach((p, i) => {
+      if (t.has(i)) {
+        if (p.med * 0.95 < lo) lo = Math.max(0, p.med * 0.95);
+        if (p.med * 1.05 > hi) hi = p.med * 1.05;
       }
-    }
+    });
     const pad = (hi - lo) * 0.06;
     return [lo, hi, pad];
   }
@@ -962,8 +970,12 @@
     let gi = rows.map((_, i) => i).filter(i => !lowSet.has(i));
     if (gi.length < 2) gi = rows.map((_, i) => i);              // 전부 부족하면 전체 사용
 
-    // 극단값(트롤 매물)만 축에서 제외 — 범위를 벗어난 점은 가장자리에 눌러 그리고, 실제 값은 호버 툴팁에 보임
-    const [lo, hi, pad] = robustRange(gi.map(i => meds[i]));
+    // 극단값(신뢰 못 하는 소표본 지점)만 축에서 제외 — 벗어난 점은 가장자리에 눌러 그리고 실제 값은 툴팁에 보임
+    const giPts = gi.map(i => ({ med: meds[i], cnt: rows[i].cnt }));
+    const [lo, hi, pad] = robustRange(giPts);
+    const giTrust = trustSet(giPts);
+    let tg = gi.filter((_, k) => giTrust.has(k));               // 통계용: 표본부족 제외 + 신뢰 지점만
+    if (tg.length < 2) tg = gi;
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));   // 축 범위로 클램프된 값 (그래프에 그려지는 값)
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
@@ -1052,34 +1064,34 @@
     // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
     // 기울기의 시작→끝 변화율은 "기간 변동" 타일에도 쓰인다
     let trend = "", trendPct = null;
-    if (gi.length >= 3) {
-      const n = gi.length;
-      const mt = gi.reduce((s, i) => s + ts[i], 0) / n;
-      const my = gi.reduce((s, i) => s + ys[i], 0) / n;
+    if (tg.length >= 3) {
+      const n = tg.length;
+      const mt = tg.reduce((s, i) => s + ts[i], 0) / n;
+      const my = tg.reduce((s, i) => s + ys[i], 0) / n;
       let num = 0, den = 0;
-      for (const i of gi) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
+      for (const i of tg) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
-      const ty0 = my + slope * (ts[gi[0]] - mt), ty1 = my + slope * (ts[gi[n - 1]] - mt);
+      const ty0 = my + slope * (ts[tg[0]] - mt), ty1 = my + slope * (ts[tg[n - 1]] - mt);
       if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
       // 색은 "기간 변동 (추세)" 타일과 동일 규칙: +3% 이상 빨강(상승), -3% 이하 파랑(하락)
       const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
                    trendPct !== null && trendPct <= -3 ? "var(--down)" : "var(--muted)";
-      trend = '<line x1="' + sx(gi[0]).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
-        '" x2="' + sx(gi[n - 1]).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
+      trend = '<line x1="' + sx(tg[0]).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
+        '" x2="' + sx(tg[n - 1]).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
         '" stroke="' + tcol + '" stroke-width="1.5" stroke-dasharray="7 5" opacity=".75"/>';
     }
 
     // 최저·최고점 마커 — 타일의 "기간 최저/최고"와 같은 값(그래프에 그려지는 선 기준)
     let extremes = "";
-    if (gi.length >= 2) {
-      let iMin = gi[0], iMax = gi[0];
-      for (const i of gi) { if (ys[i] < ys[iMin]) iMin = i; if (ys[i] > ys[iMax]) iMax = i; }
+    if (tg.length >= 2) {
+      let iMin = tg[0], iMax = tg[0];
+      for (const i of tg) { if (meds[i] < meds[iMin]) iMin = i; if (meds[i] > meds[iMax]) iMax = i; }
       const mark = (i, kind) => {
-        const x = sx(i), y = sy(ys[i]);
+        const x = sx(i), y = sy(meds[i]);
         const anchor = i < rows.length * 0.12 ? "start" : i > rows.length * 0.88 ? "end" : "middle";
         const col = kind === "hi" ? "var(--up)" : "var(--down)";
         const ty = kind === "hi" ? y - 8 : y + 16;
-        const lbl = (kind === "hi" ? "▲" : "▼") + fmtGold(ys[i]);
+        const lbl = (kind === "hi" ? "▲" : "▼") + fmtGold(meds[i]);   // 항상 실제 값 표시
         return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.6" fill="' + col + '" stroke="var(--surface)" stroke-width="1.4"/>' +
           '<text x="' + x.toFixed(1) + '" y="' + ty.toFixed(1) + '" fill="' + col + '" font-size="9.5" font-weight="700" font-family="var(--mono)" text-anchor="' + anchor + '">' + lbl + '</text>';
       };
@@ -1109,10 +1121,10 @@
       '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + (intraday ? '건/5분' : '건/일') + '</text>' +
       vols + '</svg>';
 
-    // 요약 타일 — 변동은 추세선 기울기, 최저·최고·최근값은 표본 부족일을 제외한 값 기준
-    const k = Math.min(3, gi.length);
-    const startMed = median(gi.slice(0, k).map(i => meds[i]));
-    const endMed = median(gi.slice(-k).map(i => meds[i]));
+    // 요약 타일 — 변동은 추세선 기울기, 최저·최고·최근값은 표본부족·비신뢰 지점을 제외한 실제 값
+    const k = Math.min(3, tg.length);
+    const startMed = median(tg.slice(0, k).map(i => meds[i]));
+    const endMed = median(tg.slice(-k).map(i => meds[i]));
     const change = trendPct !== null ? trendPct :
       (startMed > 0 ? (endMed - startMed) / startMed * 100 : 0);
     const tot = rows.reduce((s, r) => s + r.cnt, 0);   // 거래 건수는 사실 그대로 전부 합산
@@ -1120,8 +1132,8 @@
     tiles.innerHTML =
       tile("최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
       tile("기간 변동 (추세)", fmtPct(change), cls) +
-      tile("기간 최저", fmtGold(Math.min(...gi.map(i => ys[i])))) +
-      tile("기간 최고", fmtGold(Math.max(...gi.map(i => ys[i])))) +
+      tile("기간 최저", fmtGold(Math.min(...tg.map(i => meds[i])))) +
+      tile("기간 최고", fmtGold(Math.max(...tg.map(i => meds[i])))) +
       tile("기간 거래", tot.toLocaleString() + ' <small>건</small>');
 
     // 패치 영향 목록
@@ -1224,8 +1236,8 @@
     // 현재 시즌의 "앞으로 남은 구간"이 보이게)
     const maxDays = Math.max(...selected.map(s => dayOf(seasonRange(s)[1], s.date)), 7);
 
-    const allMeds = seriesList.flatMap(sr => sr.good.map(k => sr.rows[k].med));   // 표본 부족일 제외
-    const [lo, hi, pad] = robustRange(allMeds);
+    const allPts = seriesList.flatMap(sr => sr.good.map(k => ({ med: sr.rows[k].med, cnt: sr.rows[k].cnt })));
+    const [lo, hi, pad] = robustRange(allPts);   // 표본 부족일 제외 + 신뢰 판정
 
     const sx = (d) => P.l + (d / maxDays) * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
