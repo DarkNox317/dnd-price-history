@@ -313,6 +313,8 @@
     return (code >= 0 && code < 11172) ? CHO[Math.floor(code / 588)] : c;
   }).join("");
 
+  // 카탈로그에 없는 아이템(이름 미등록 신규 등)은 ID를 사람이 읽게 다듬어 표시
+  const prettyId = (id) => id.replace(/^id\.item\./, "").replace(/_\d+$/, "").replace(/_/g, " ");
   const fmtGold = (v) => v >= 10000 ? (Math.round(v / 100) / 10).toLocaleString() + "k"
     : v >= 100 ? Math.round(v).toLocaleString()
     : (Math.round(v * 10) / 10).toLocaleString();   // 100골드 미만은 소수 1자리 유지
@@ -374,7 +376,7 @@
       tile("거래된 아이템", ids.length.toLocaleString() + ' <small>종</small>');
 
     const li = (id, valHtml) => {
-      const [ko, , rar] = CATALOG[id] || [id, "", ""];
+      const [ko, , rar] = CATALOG[id] || [prettyId(id), "", ""];
       return '<div class="li" data-id="' + id + '">' +
         '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
         '<span class="nm">' + ko + '</span>' + valHtml + '</div>';
@@ -489,18 +491,15 @@
           const f = s.filter(p => p.cnt >= cmed * 0.2);
           if (f.length >= 5) s = f;
         }
+        // 로그 공간 회귀: %-변화가 대칭·안정적이고, 적합 시작값이 0에 가까워지며 %가 폭발하는 일이 없음
         const n = s.length;
         const mt = s.reduce((a, p) => a + p.t, 0) / n;
-        const my = s.reduce((a, p) => a + p.med, 0) / n;
+        const my = s.reduce((a, p) => a + Math.log(p.med), 0) / n;
         let num = 0, den = 0;
-        for (const p of s) { num += (p.t - mt) * (p.med - my); den += (p.t - mt) * (p.t - mt); }
+        for (const p of s) { num += (p.t - mt) * (Math.log(p.med) - my); den += (p.t - mt) * (p.t - mt); }
         if (!den) continue;
         const slope = num / den;
-        const ty0 = my + slope * (s[0].t - mt);
-        let ty1 = my + slope * (s[n - 1].t - mt);
-        if (ty0 <= 0) continue;
-        if (ty1 < 0) ty1 = 0;                       // 가격은 -100% 밑으로 못 떨어짐
-        const pct = (ty1 - ty0) / ty0 * 100;
+        const pct = (Math.exp(slope * (s[n - 1].t - s[0].t)) - 1) * 100;
         const rec = { id, pct, to: s[n - 1].med, days: n };
         if (pct >= 10) mupsAll.push(rec);
         else if (pct <= -10) mdownsAll.push(rec);
@@ -621,7 +620,7 @@
       '<button class="rng" data-type="' + t + '" data-on="' + (rankFilter === t ? 1 : 0) + '" type="button">' +
       (t === "all" ? "전체" : TYPE_KO[t]) + '</button>').join("");
     $("rank-list").innerHTML = rows.map((x, i) => {
-      const [ko, , rar] = CATALOG[x.id] || [x.id, "", ""];
+      const [ko, , rar] = CATALOG[x.id] || [prettyId(x.id), "", ""];
       return '<div class="li" data-id="' + x.id + '"><span class="rankno">' + (i + 1) + '</span>' +
         '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
         '<span class="nm">' + ko + ' <small style="color:var(--muted)">' + (RARITY_KO[rar] || "") + '</small></span>' +
@@ -666,7 +665,7 @@
     const sec = $("h_favsec");
     if (!FAVS.length || !HOME_DAY) { sec.hidden = true; return; }
     $("h_fav").innerHTML = FAVS.map(id => {
-      const [ko, , rar] = CATALOG[id] || [id, "", ""];
+      const [ko, , rar] = CATALOG[id] || [prettyId(id), "", ""];
       const cur = HOME_DAY[id], prev = HOME_PREV && HOME_PREV[id];
       let val = '<span class="val" style="color:var(--muted)">최근 거래 없음</span>';
       if (cur) {
