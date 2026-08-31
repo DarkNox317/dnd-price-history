@@ -149,10 +149,11 @@ def _quantile(sorted_ps, q):
 
 
 def _stats(pairs):
-    """[(개당가, 수량)] → [중앙값, 최저, 최고, 건수, P25, P75, VWAP]
+    """[(개당가, 수량)] → [중앙값, 최저, 최고, 건수, P25, P75, VWAP, 총수량, 총거래액]
 
     VWAP 은 MAD 울타리(수정 z-점수 3.5) 안의 거래만으로 계산 — 트롤 매물이
-    거래량 가중 평균을 오염시키지 않게 (Iglewicz-Hoaglin 기준)."""
+    거래량 가중 평균을 오염시키지 않게 (Iglewicz-Hoaglin 기준).
+    총수량·총거래액(골드)은 전 거래 합계 — 골드 흐름(거래대금) 분석용."""
     ps = sorted(p for p, q in pairs)
     med = statistics.median(ps)
     mad = statistics.median([abs(p - med) for p in ps])
@@ -160,11 +161,14 @@ def _stats(pairs):
         good = [(p, q) for p, q in pairs if abs(0.6745 * (p - med) / mad) <= 3.5]
     else:
         good = [(p, q) for p, q in pairs if p == med] or pairs
-    tot_val = sum(p * q for p, q in good)
-    tot_qty = sum(q for p, q in good)
-    vwap = tot_val / tot_qty if tot_qty else med
+    g_val = sum(p * q for p, q in good)
+    g_qty = sum(q for p, q in good)
+    vwap = g_val / g_qty if g_qty else med
+    all_qty = sum(q for p, q in pairs)
+    all_val = sum(p * q for p, q in pairs)
     return [round(med, 1), round(ps[0], 1), round(ps[-1], 1), len(pairs),
-            round(_quantile(ps, 0.25), 1), round(_quantile(ps, 0.75), 1), round(vwap, 1)]
+            round(_quantile(ps, 0.25), 1), round(_quantile(ps, 0.75), 1), round(vwap, 1),
+            all_qty, round(all_val)]
 
 
 def summarize(acc):
