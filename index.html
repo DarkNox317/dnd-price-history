@@ -1126,6 +1126,7 @@
   // 데이터가 이 범위를 넘으면(진짜 큰 추세 변화) 2~98 분위까지 축을 넓히고,
   // 그것도 넘는 극단값(트롤 매물)만 가장자리에 눌러 그린다.
   const AXIS_RATIO = 2.0;
+  const MARKET_CAP = 100000;   // 마켓 등록가 상한 — 이 위로는 시세가 존재할 수 없음
   // 신뢰 판정: 거래 5건 이상인 지점의 중앙값은 무조건 신뢰 (트롤 매물 하나로는 못 움직이는 값).
   // 5건 미만인 지점만 MAD 기반 수정 z-점수 3.5 (Iglewicz-Hoaglin)로 걸러 극단값을 차단.
   function trustSet (pts) {           // pts: [{med, cnt}] → 신뢰 지점 인덱스 Set
@@ -1148,6 +1149,7 @@
         if (p.med * 1.05 > hi) hi = p.med * 1.05;
       }
     });
+    hi = Math.min(hi, MARKET_CAP * 1.03);   // 등록 상한(100k) 위의 빈 하늘은 그리지 않음
     const pad = (hi - lo) * 0.06;
     return [lo, hi, pad];
   }
