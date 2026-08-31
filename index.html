@@ -223,6 +223,7 @@
       <div class="cols">
         <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
         <div><h3>자전거래 의심 (거래량 폭증 + 가격 정지)</h3><div id="h_wash"></div></div>
+        <div><h3 class="rankable" data-rank="gt">골드 이송 의심 (평소가 10배↑ 거래) <span class="more">전체 ▸</span></h3><div id="h_gt"></div></div>
       </div>
       <div id="h_favsec" hidden style="margin-top:18px">
         <h3>★ 즐겨찾기</h3>
@@ -595,6 +596,22 @@
       li(m.id, '<span class="val">' + m.cnt.toLocaleString() + '건 <b style="color:var(--ink)">×' +
         (Math.round(m.ratio * 10) / 10) + '</b> 가격 그대로</span>')).join("") :
       emptyLi(Pd ? "의심 패턴 없음" : "이틀치가 쌓이면 표시돼");
+
+    // 골드 이송(RMT) 감시: 평소 가격의 10배 이상으로 여러 건 거래된 아이템 —
+    // 쓰레기 아이템을 비싸게 "사주는" 방식의 골드 이동·세탁 시그니처. 거래 규모(가격×건수)순.
+    let gtAll = [];
+    for (const id of ids) {
+      const v = day[id];
+      if (v[3] >= 5 && typPrice[id] > 0 && v[0] > typPrice[id] * 10) {
+        gtAll.push({ id, med: v[0], cnt: v[3], typ: typPrice[id], scale: v[0] * v[3] });
+      }
+    }
+    gtAll.sort((a, b) => b.scale - a.scale);
+    const gtVal = (m) => '<span class="val">평소 ' + fmtGold(m.typ) + ' → <b style="color:var(--ink)">' +
+      fmtGold(m.med) + '</b> · ' + m.cnt.toLocaleString() + '건</span>';
+    RANKS.gt = { title: "골드 이송 의심 전체 — " + L + " (거래 규모순)", rows: gtAll.map(m => ({ id: m.id, val: gtVal(m) })) };
+    $("h_gt").innerHTML = gtAll.length ? gtAll.slice(0, 6).map(m => li(m.id, gtVal(m))).join("") :
+      emptyLi("의심 패턴 없음");
 
     $("placeholder").hidden = true;
     $("dash").hidden = false;
