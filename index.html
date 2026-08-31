@@ -222,8 +222,12 @@
       </div>
       <div class="cols">
         <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
+        <div><h3>골드 회전량 (하루 총 거래대금)</h3><div id="h_turn"></div></div>
         <div><h3>자전거래 의심 (거래량 폭증 + 가격 정지)</h3><div id="h_wash"></div></div>
-        <div><h3 class="rankable" data-rank="gt">골드 이송 의심 (평소가 10배↑ 거래) <span class="more">전체 ▸</span></h3><div id="h_gt"></div></div>
+      </div>
+      <div class="cols">
+        <div><h3>카테고리별 골드 흐름 (거래대금 점유율)</h3><div id="h_flow"></div></div>
+        <div><h3 class="rankable" data-rank="gval">거래대금 TOP (돈이 몰린 아이템) <span class="more">전체 ▸</span></h3><div id="h_gval"></div></div>
       </div>
       <div id="h_favsec" hidden style="margin-top:18px">
         <h3>★ 즐겨찾기</h3>
@@ -316,7 +320,8 @@
 
   // 카탈로그에 없는 아이템(이름 미등록 신규 등)은 ID를 사람이 읽게 다듬어 표시
   const prettyId = (id) => id.replace(/^id\.item\./, "").replace(/_\d+$/, "").replace(/_/g, " ");
-  const fmtGold = (v) => v >= 10000 ? (Math.round(v / 100) / 10).toLocaleString() + "k"
+  const fmtGold = (v) => v >= 1e6 ? (Math.round(v / 1e5) / 10).toLocaleString() + "M"
+    : v >= 10000 ? (Math.round(v / 100) / 10).toLocaleString() + "k"
     : v >= 100 ? Math.round(v).toLocaleString()
     : (Math.round(v * 10) / 10).toLocaleString();   // 100골드 미만은 소수 1자리 유지
   const fmtPct = (p) => (p > 0 ? "+" : "") + (Math.round(p * 10) / 10) + "%";
@@ -597,21 +602,82 @@
         (Math.round(m.ratio * 10) / 10) + '</b> 가격 그대로</span>')).join("") :
       emptyLi(Pd ? "의심 패턴 없음" : "이틀치가 쌓이면 표시돼");
 
-    // 골드 이송(RMT) 감시: 평소 가격의 10배 이상으로 여러 건 거래된 아이템 —
-    // 쓰레기 아이템을 비싸게 "사주는" 방식의 골드 이동·세탁 시그니처. 거래 규모(가격×건수)순.
-    let gtAll = [];
-    for (const id of ids) {
-      const v = day[id];
-      if (v[3] >= 5 && typPrice[id] > 0 && v[0] > typPrice[id] * 10) {
-        gtAll.push({ id, med: v[0], cnt: v[3], typ: typPrice[id], scale: v[0] * v[3] });
-      }
+    /* ── 골드 흐름 (거래대금 = 개당가×수량 합계, v3 스키마) ──
+       주식의 자금 흐름 분석과 같은 문법: 회전량(전체 거래대금 추이),
+       섹터 로테이션(카테고리 점유율 이동), 거래대금 상위(돈이 몰린 곳) */
+    const valOf = (v) => (v.length > 8 && v[8] != null) ? v[8] : null;
+
+    // ① 골드 회전량: 하루 총 거래대금 추이
+    const turnSeries = [];
+    for (const d of withData) {
+      const dm = dayMap[d];
+      let tot = 0, has = false;
+      for (const id in dm) { const x = valOf(dm[id]); if (x != null) { tot += x; has = true; } }
+      if (has) turnSeries.push({ d, v: tot });
     }
-    gtAll.sort((a, b) => b.scale - a.scale);
-    const gtVal = (m) => '<span class="val">평소 ' + fmtGold(m.typ) + ' → <b style="color:var(--ink)">' +
-      fmtGold(m.med) + '</b> · ' + m.cnt.toLocaleString() + '건</span>';
-    RANKS.gt = { title: "골드 이송 의심 전체 — " + L + " (거래 규모순)", rows: gtAll.map(m => ({ id: m.id, val: gtVal(m) })) };
-    $("h_gt").innerHTML = gtAll.length ? gtAll.slice(0, 6).map(m => li(m.id, gtVal(m))).join("") :
-      emptyLi("의심 패턴 없음");
+    if (turnSeries.length) {
+      const curT = turnSeries[turnSeries.length - 1];
+      const prevT = turnSeries.length > 1 ? turnSeries[turnSeries.length - 2].v : null;
+      const chgT = prevT ? (curT.v - prevT) / prevT * 100 : null;
+      const IW2 = 300, IH2 = 56;
+      const tvs = turnSeries.map(p => p.v);
+      const tlo = Math.min(...tvs) * 0.95, thi = Math.max(...tvs) * 1.02;
+      const tpx = (i) => turnSeries.length === 1 ? IW2 / 2 : 4 + (i / (turnSeries.length - 1)) * (IW2 - 8);
+      const tpy = (v) => IH2 - 6 - ((v - tlo) / Math.max(1e-9, thi - tlo)) * (IH2 - 12);
+      const tpath = turnSeries.map((p, i) => (i ? "L" : "M") + tpx(i).toFixed(1) + "," + tpy(p.v).toFixed(1)).join(" ");
+      $("h_turn").innerHTML =
+        '<div class="li" style="cursor:default"><span class="nm"><b style="font-family:var(--mono);font-size:1.05rem;color:var(--ink)">' +
+        fmtGold(curT.v) + '</b> <small style="color:var(--muted)">골드/일</small>' +
+        (chgT !== null ? ' <span class="' + (chgT >= 3 ? "up" : chgT <= -3 ? "down" : "") +
+          '" style="font-weight:700;font-family:var(--mono)">' + fmtPct(chgT) + '</span>' : "") +
+        '</span></div>' +
+        '<svg viewBox="0 0 ' + IW2 + ' ' + IH2 + '" style="width:100%;height:auto" role="img" aria-label="골드 회전량 추이">' +
+        '<path d="' + tpath + '" fill="none" stroke="var(--vol)" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+    } else {
+      $("h_turn").innerHTML = emptyLi("거래대금 데이터가 쌓이면 표시돼");
+    }
+
+    // ② 카테고리별 골드 흐름 (점유율 + 전일 대비 이동)
+    const CAT_COLOR = { weapon: "#c56b6b", armor: "#6b8fc5", accessory: "#b78bd6", utility: "#5fae8f", misc: "#b8a26b" };
+    const catShare = (dm) => {
+      const s = {}; let tot = 0;
+      for (const id in dm) {
+        const x = valOf(dm[id]); if (x == null) continue;
+        const t = (CATALOG[id] || [])[3] || "misc";
+        s[t] = (s[t] || 0) + x; tot += x;
+      }
+      if (!tot) return null;
+      for (const k in s) s[k] = s[k] / tot * 100;
+      return s;
+    };
+    const shareNow = catShare(day);
+    const sharePrev = Pd ? catShare(dayMap[Pd]) : null;
+    if (shareNow) {
+      const order = Object.keys(shareNow).sort((a, b) => shareNow[b] - shareNow[a]);
+      const bar = '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin:.35rem .5rem .55rem">' +
+        order.map(t => '<div style="width:' + shareNow[t] + '%;background:' + (CAT_COLOR[t] || "#999") + '"></div>').join("") + '</div>';
+      $("h_flow").innerHTML = bar + order.map(t => {
+        const dlt = sharePrev && sharePrev[t] != null ? shareNow[t] - sharePrev[t] : null;
+        const dTxt = dlt === null ? "" :
+          ' <span class="' + (dlt >= 1 ? "up" : dlt <= -1 ? "down" : "") + '" style="font-weight:700">' +
+          (dlt > 0 ? "+" : "") + (Math.round(dlt * 10) / 10) + '%p</span>';
+        return '<div class="li" style="cursor:default">' +
+          '<span class="rdot" style="background:' + (CAT_COLOR[t] || "#999") + '"></span>' +
+          '<span class="nm">' + (TYPE_KO[t] || t) + '</span>' +
+          '<span class="val">' + (Math.round(shareNow[t] * 10) / 10) + '%' + dTxt + '</span></div>';
+      }).join("");
+    } else {
+      $("h_flow").innerHTML = emptyLi("거래대금 데이터가 쌓이면 표시돼");
+    }
+
+    // ③ 거래대금 TOP: 돈이 가장 많이 몰린 아이템
+    const gvalAll = ids.filter(id => valOf(day[id]) != null)
+      .sort((a, b) => valOf(day[b]) - valOf(day[a]));
+    const gvalVal = (id) => '<span class="val"><b style="color:var(--ink)">' + fmtGold(valOf(day[id])) +
+      '</b> 골드 · ' + day[id][3].toLocaleString() + '건</span>';
+    RANKS.gval = { title: "거래대금 TOP — " + L + " (돈이 몰린 아이템)", rows: gvalAll.map(id => ({ id, val: gvalVal(id) })) };
+    $("h_gval").innerHTML = gvalAll.length ? gvalAll.slice(0, 6).map(id => li(id, gvalVal(id))).join("") :
+      emptyLi("거래대금 데이터가 쌓이면 표시돼");
 
     $("placeholder").hidden = true;
     $("dash").hidden = false;
