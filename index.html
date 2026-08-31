@@ -816,8 +816,19 @@
     if (!rows.length) return;
 
     const meds = rows.map(r => r.med);
+
+    // 표본 부족 감지 (일별 화면): 그 아이템의 기간 중앙값 거래량 대비 20% 미만인 날.
+    // 그래프엔 회색 점으로 보이되, 축·추세선·타일 등 모든 계산에서는 제외한다.
+    const lowSet = new Set();
+    if (!intraday && rows.length >= 5) {
+      const cmed = median(rows.map(r => r.cnt));
+      if (cmed >= 50) rows.forEach((r, i) => { if (r.cnt < cmed * 0.2) lowSet.add(i); });
+    }
+    let gi = rows.map((_, i) => i).filter(i => !lowSet.has(i));
+    if (gi.length < 2) gi = rows.map((_, i) => i);              // 전부 부족하면 전체 사용
+
     // 극단값(트롤 매물)만 축에서 제외 — 범위를 벗어난 점은 가장자리에 눌러 그리고, 실제 값은 호버 툴팁에 보임
-    const [lo, hi, pad] = robustRange(meds);
+    const [lo, hi, pad] = robustRange(gi.map(i => meds[i]));
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));   // 축 범위로 클램프된 값 (그래프에 그려지는 값)
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
@@ -875,7 +886,7 @@
 
     // 패치·시즌 마커 (기간 내 배포일) — 핫픽스는 붉은 점선, 시즌 시작은 금색 실선 (1일 모드에선 생략)
     const patchByDate = {};
-    const patchAnalysis = intraday ? [] : analyzePatches(rows);
+    const patchAnalysis = intraday ? [] : analyzePatches(gi.map(i => rows[i]));   // 패치 영향도 표본 부족일 제외
     const marks = patchAnalysis.filter(p => dateIndex[p.date] !== undefined).map(p => {
       patchByDate[p.date] = p;
       const x = sx(dateIndex[p.date]).toFixed(1);
@@ -890,14 +901,6 @@
              '<path d="M' + x + ' ' + (P.t - 2) + ' l4 5 -4 5 -4 -5 z" fill="var(--mark)"/>';
     }).join("");
 
-    // 표본 부족 감지 (일별 화면): 그 아이템의 기간 중앙값 거래량 대비 20% 미만인 날
-    // → 수집원(DarkerDB) 결손 가능성이 있어 가격 표본 신뢰도가 낮음
-    const lowSet = new Set();
-    if (!intraday && rows.length >= 5) {
-      const cmed = median(rows.map(r => r.cnt));
-      if (cmed >= 50) rows.forEach((r, i) => { if (r.cnt < cmed * 0.2) lowSet.add(i); });
-    }
-
     const dots = rows.length <= 60 ? rows.map((r, i) =>
       lowSet.has(i)
         ? '<circle cx="' + sx(i).toFixed(1) + '" cy="' + sy(r.med).toFixed(1) + '" r="3" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="2 1.5"/>'
@@ -907,27 +910,28 @@
     // 추세선 (최소제곱 직선, 축 범위로 클램프한 값 기준 — 극단값에 안 끌려가게)
     // 기울기의 시작→끝 변화율은 "기간 변동" 타일에도 쓰인다
     let trend = "", trendPct = null;
-    if (rows.length >= 3) {
-      const n = ys.length;
-      const mt = ts.reduce((s, v) => s + v, 0) / n;
-      const my = ys.reduce((s, v) => s + v, 0) / n;
+    if (gi.length >= 3) {
+      const n = gi.length;
+      const mt = gi.reduce((s, i) => s + ts[i], 0) / n;
+      const my = gi.reduce((s, i) => s + ys[i], 0) / n;
       let num = 0, den = 0;
-      for (let i = 0; i < n; i++) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
+      for (const i of gi) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
-      const ty0 = my + slope * (ts[0] - mt), ty1 = my + slope * (ts[n - 1] - mt);
+      const ty0 = my + slope * (ts[gi[0]] - mt), ty1 = my + slope * (ts[gi[n - 1]] - mt);
       if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
       // 색은 "기간 변동 (추세)" 타일과 동일 규칙: +3% 이상 빨강(상승), -3% 이하 파랑(하락)
       const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
                    trendPct !== null && trendPct <= -3 ? "var(--down)" : "var(--muted)";
-      trend = '<line x1="' + sx(0).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
-        '" x2="' + sx(rows.length - 1).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
+      trend = '<line x1="' + sx(gi[0]).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
+        '" x2="' + sx(gi[n - 1]).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
         '" stroke="' + tcol + '" stroke-width="1.5" stroke-dasharray="7 5" opacity=".75"/>';
     }
 
     // 최저·최고점 마커 — 타일의 "기간 최저/최고"와 같은 값(그래프에 그려지는 선 기준)
     let extremes = "";
-    if (rows.length >= 2) {
-      const iMin = ys.indexOf(Math.min(...ys)), iMax = ys.indexOf(Math.max(...ys));
+    if (gi.length >= 2) {
+      let iMin = gi[0], iMax = gi[0];
+      for (const i of gi) { if (ys[i] < ys[iMin]) iMin = i; if (ys[i] > ys[iMax]) iMax = i; }
       const mark = (i, kind) => {
         const x = sx(i), y = sy(ys[i]);
         const anchor = i < rows.length * 0.12 ? "start" : i > rows.length * 0.88 ? "end" : "middle";
@@ -962,19 +966,19 @@
       '<text x="' + (W - P.r) + '" y="14" fill="var(--muted)" font-size="9" font-family="var(--mono)" text-anchor="end">최대 ' + maxCnt.toLocaleString() + (intraday ? '건/5분' : '건/일') + '</text>' +
       vols + '</svg>';
 
-    // 요약 타일 — 변동은 추세선 기울기(기간 전체), 최저·최고는 그래프에 보이는 중앙값 선 기준
-    const k = Math.min(3, rows.length);
-    const startMed = median(rows.slice(0, k).map(r => r.med));
-    const endMed = median(rows.slice(-k).map(r => r.med));
+    // 요약 타일 — 변동은 추세선 기울기, 최저·최고·최근값은 표본 부족일을 제외한 값 기준
+    const k = Math.min(3, gi.length);
+    const startMed = median(gi.slice(0, k).map(i => meds[i]));
+    const endMed = median(gi.slice(-k).map(i => meds[i]));
     const change = trendPct !== null ? trendPct :
       (startMed > 0 ? (endMed - startMed) / startMed * 100 : 0);
-    const tot = rows.reduce((s, r) => s + r.cnt, 0);
+    const tot = rows.reduce((s, r) => s + r.cnt, 0);   // 거래 건수는 사실 그대로 전부 합산
     const cls = change >= 3 ? "up" : change <= -3 ? "down" : "";
     tiles.innerHTML =
       tile("최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
       tile("기간 변동 (추세)", fmtPct(change), cls) +
-      tile("기간 최저", fmtGold(Math.min(...ys))) +
-      tile("기간 최고", fmtGold(Math.max(...ys))) +
+      tile("기간 최저", fmtGold(Math.min(...gi.map(i => ys[i])))) +
+      tile("기간 최고", fmtGold(Math.max(...gi.map(i => ys[i])))) +
       tile("기간 거래", tot.toLocaleString() + ' <small>건</small>');
 
     // 패치 영향 목록
