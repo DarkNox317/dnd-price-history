@@ -240,7 +240,8 @@
       <button id="rank-back" type="button" title="홈으로">←</button>
       <h2 id="rank-title"></h2>
     </div>
-    <div class="ranges" id="rank-filter" style="margin:.7rem 0 .3rem"></div>
+    <div class="ranges" id="rank-period" style="margin:.7rem 0 .1rem" hidden></div>
+    <div class="ranges" id="rank-filter" style="margin:.4rem 0 .3rem"></div>
     <div id="rank-list" style="margin-top:.5rem"></div>
   </div>
   <div id="view" hidden>
@@ -683,6 +684,7 @@
     $("dash").hidden = false;
 
     HOME_DAY = day; HOME_PREV = Pd ? dayMap[Pd] : null;
+    HOME_DAYMAP = dayMap; HOME_WITHDATA = withData;   // 순위 페이지의 기간 합산용
     renderFavs();
   }
 
@@ -691,11 +693,59 @@
   const TYPE_KO = { weapon: "무기", armor: "방어구", accessory: "장신구", utility: "소모품·도구", misc: "재료·기타" };
   let currentRank = null;      // 지금 열려 있는 순위 화면
   let rankFilter = "all";      // 순위 화면 카테고리 필터
+  let rankPeriod = "d";        // 거래량·거래대금 TOP 의 기간 (일간/주간/월간/시즌)
+  let HOME_DAYMAP = null, HOME_WITHDATA = null;
   let NAV_ORIGIN = "home";     // 아이템 화면에 "어디서" 들어왔는지 (← 버튼 복귀용)
 
+  // 거래량·거래대금 TOP: 선택 기간의 합산으로 순위 재계산
+  function aggRankRows (kind) {
+    const wd = HOME_WITHDATA;
+    const L = wd[wd.length - 1];
+    let days;
+    if (rankPeriod === "d") days = [L];
+    else if (rankPeriod === "w") days = wd.filter(d => (new Date(L) - new Date(d)) / 864e5 < 7);
+    else if (rankPeriod === "m") days = wd.filter(d => (new Date(L) - new Date(d)) / 864e5 < 30);
+    else {
+      const today = new Date().toISOString().slice(0, 10);
+      const cs = [...SEASONS].reverse().find(s => s.date <= today);
+      days = cs ? wd.filter(d => d >= cs.date) : wd;
+    }
+    const agg = {};
+    for (const d of days) {
+      const dm = HOME_DAYMAP[d];
+      for (const id in dm) {
+        const v = dm[id];
+        const a = agg[id] = agg[id] || { cnt: 0, val: 0, has: false };
+        a.cnt += v[3];
+        if (v.length > 8 && v[8] != null) { a.val += v[8]; a.has = true; }
+      }
+    }
+    const label = { d: "일간 (" + L + ")", w: "주간 합산", m: "월간 합산", s: "시즌 전체 합산" }[rankPeriod];
+    if (kind === "vol") {
+      return {
+        title: "거래량 TOP — " + label,
+        rows: Object.keys(agg).sort((a, b) => agg[b].cnt - agg[a].cnt).map(id => ({
+          id, val: '<span class="val">' + agg[id].cnt.toLocaleString() + '건' +
+            (agg[id].has ? ' · ' + fmtGold(agg[id].val) + ' 골드' : '') + '</span>' })),
+      };
+    }
+    return {
+      title: "거래대금 TOP — " + label + " (돈이 몰린 아이템)",
+      rows: Object.keys(agg).filter(id => agg[id].has).sort((a, b) => agg[b].val - agg[a].val).map(id => ({
+        id, val: '<span class="val"><b style="color:var(--ink)">' + fmtGold(agg[id].val) +
+          '</b> 골드 · ' + agg[id].cnt.toLocaleString() + '건</span>' })),
+    };
+  }
+
   function renderRankList () {
-    const r = RANKS[currentRank];
+    const dynamic = (currentRank === "vol" || currentRank === "gval") && HOME_WITHDATA;
+    const r = dynamic ? aggRankRows(currentRank) : RANKS[currentRank];
     if (!r) return;
+    $("rank-period").hidden = !dynamic;
+    if (dynamic) {
+      $("rank-period").innerHTML = [["d", "일간"], ["w", "주간"], ["m", "월간"], ["s", "시즌 전체"]].map(([p, lbl]) =>
+        '<button class="rng" data-period="' + p + '" data-on="' + (rankPeriod === p ? 1 : 0) + '" type="button">' + lbl + '</button>').join("");
+    }
     const rows = rankFilter === "all" ? r.rows :
       r.rows.filter(x => (CATALOG[x.id] || [])[3] === rankFilter);
     $("rank-title").textContent = r.title + " (" + rows.length.toLocaleString() + "개)";
@@ -714,7 +764,7 @@
   function showRank (key) {
     const r = RANKS[key];
     if (!r || !r.rows.length) return;
-    if (currentRank !== key) rankFilter = "all";   // 다른 순위로 이동하면 필터 초기화
+    if (currentRank !== key) { rankFilter = "all"; rankPeriod = "d"; }   // 다른 순위로 이동하면 초기화
     currentRank = key;
     $("home").hidden = true;
     $("view").hidden = true;
@@ -727,6 +777,12 @@
     const b = ev.target.closest("[data-type]");
     if (!b) return;
     rankFilter = b.dataset.type;
+    renderRankList();
+  });
+  $("rank-period").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-period]");
+    if (!b) return;
+    rankPeriod = b.dataset.period;
     renderRankList();
   });
   $("dash").addEventListener("click", (ev) => {
