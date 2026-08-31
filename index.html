@@ -217,6 +217,10 @@
         <div><h3 class="rankable" data-rank="surge">거래량 급증 (평소 대비) <span class="more">전체 ▸</span></h3><div id="h_surge"></div></div>
       </div>
       <div class="cols">
+        <div><h3 class="rankable" data-rank="mup">월간 급등 (30일 대비) <span class="more">전체 ▸</span></h3><div id="h_mup"></div></div>
+        <div><h3 class="rankable" data-rank="mdown">월간 급락 (30일 대비) <span class="more">전체 ▸</span></h3><div id="h_mdown"></div></div>
+      </div>
+      <div class="cols">
         <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
         <div><h3>자전거래 의심 (거래량 폭증 + 가격 정지)</h3><div id="h_wash"></div></div>
       </div>
@@ -373,6 +377,7 @@
         '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
         '<span class="nm">' + ko + '</span>' + valHtml + '</div>';
     };
+    const emptyLi = (msg) => '<div class="li" style="cursor:default;color:var(--muted)">' + msg + '</div>';
 
     const volAll = [...ids].sort((a, b) => day[b][3] - day[a][3]);
     const volVal = (id) => '<span class="val">' + day[id][3].toLocaleString() + '건 · ' + fmtGold(day[id][0]) + '</span>';
@@ -423,7 +428,27 @@
     }
     RANKS.wup = { title: "주간 급등 전체 — " + (Wd || "") + " → " + L, rows: wupsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
     RANKS.wdown = { title: "주간 급락 전체 — " + (Wd || "") + " → " + L, rows: wdownsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
-    const emptyLi = (msg) => '<div class="li" style="cursor:default;color:var(--muted)">' + msg + '</div>';
+
+    // 월간 무버: ~30일 전 수집일과 비교 (±20% 이상)
+    let Md = null;
+    for (let i = idxL - 1; i >= 0; i--) {
+      if ((new Date(L) - new Date(withData[i])) / 864e5 >= 27) { Md = withData[i]; break; }
+    }
+    let mupsAll = [], mdownsAll = [];
+    if (Md) {
+      const mo = dayMap[Md];
+      const mv2 = ids.filter(id => mo[id] && mo[id][3] >= 5 && day[id][3] >= 5 && mo[id][0] > 0)
+        .map(id => ({ id, from: mo[id][0], to: day[id][0], pct: (day[id][0] - mo[id][0]) / mo[id][0] * 100 }));
+      mv2.sort((a, b) => b.pct - a.pct);
+      mupsAll = mv2.filter(m => m.pct >= 20);
+      mdownsAll = mv2.filter(m => m.pct <= -20).reverse();
+    }
+    RANKS.mup = { title: "월간 급등 전체 — " + (Md || "") + " → " + L, rows: mupsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
+    RANKS.mdown = { title: "월간 급락 전체 — " + (Md || "") + " → " + L, rows: mdownsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
+    $("h_mup").innerHTML = mupsAll.length ? mupsAll.slice(0, 6).map(m => li(m.id, moverVal(m, "val up"))).join("") :
+      emptyLi(Md ? "±20% 이상 변동 없음" : "30일치가 쌓이면 표시돼");
+    $("h_mdown").innerHTML = mdownsAll.length ? mdownsAll.slice(0, 6).map(m => li(m.id, moverVal(m, "val down"))).join("") :
+      emptyLi(Md ? "±20% 이상 변동 없음" : "30일치가 쌓이면 표시돼");
     $("h_wup").innerHTML = wups.length ? wups.map(m => li(m.id, moverVal(m, "val up"))).join("") :
       emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
     $("h_wdown").innerHTML = wdowns.length ? wdowns.map(m => li(m.id, moverVal(m, "val down"))).join("") :
