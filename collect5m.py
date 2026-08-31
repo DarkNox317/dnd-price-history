@@ -97,7 +97,8 @@ def sweep_window(frm, to, acc, item_id=None, max_pages=None):
                 continue
             hh, mm = int(ts[11:13]), int(ts[14:16])
             bucket = (hh * 60 + mm) // 5
-            acc.setdefault(iid, {}).setdefault(bucket, []).append(float(p))
+            qty = r.get("quantity") or 1
+            acc.setdefault(iid, {}).setdefault(bucket, []).append((float(p), int(qty)))
             if RAW_FH[0] is not None:
                 RAW_FH[0].write(json.dumps(
                     [ts, iid, r.get("price_per_unit"), r.get("price"), r.get("quantity")],
@@ -136,22 +137,48 @@ def collect_day(day, item_id=None, max_pages=None):
     return acc, grabbed
 
 
+def _quantile(sorted_ps, q):
+    """정렬된 리스트의 분위값 (선형 보간)."""
+    if len(sorted_ps) == 1:
+        return sorted_ps[0]
+    pos = q * (len(sorted_ps) - 1)
+    lo = int(pos)
+    frac = pos - lo
+    hi = min(lo + 1, len(sorted_ps) - 1)
+    return sorted_ps[lo] * (1 - frac) + sorted_ps[hi] * frac
+
+
+def _stats(pairs):
+    """[(개당가, 수량)] → [중앙값, 최저, 최고, 건수, P25, P75, VWAP]
+
+    VWAP 은 MAD 울타리(수정 z-점수 3.5) 안의 거래만으로 계산 — 트롤 매물이
+    거래량 가중 평균을 오염시키지 않게 (Iglewicz-Hoaglin 기준)."""
+    ps = sorted(p for p, q in pairs)
+    med = statistics.median(ps)
+    mad = statistics.median([abs(p - med) for p in ps])
+    if mad > 0:
+        good = [(p, q) for p, q in pairs if abs(0.6745 * (p - med) / mad) <= 3.5]
+    else:
+        good = [(p, q) for p, q in pairs if p == med] or pairs
+    tot_val = sum(p * q for p, q in good)
+    tot_qty = sum(q for p, q in good)
+    vwap = tot_val / tot_qty if tot_qty else med
+    return [round(med, 1), round(ps[0], 1), round(ps[-1], 1), len(pairs),
+            round(_quantile(ps, 0.25), 1), round(_quantile(ps, 0.75), 1), round(vwap, 1)]
+
+
 def summarize(acc):
-    """acc → (5분 버킷 파일용, 일 집계용)"""
+    """acc → (5분 버킷 파일용, 일 집계용). 스키마 v2: [med,min,max,cnt,p25,p75,vwap]"""
     detail, daily = {}, {}
     for iid, buckets in acc.items():
         rows = []
-        all_prices = []
-        cnt = 0
+        all_pairs = []
         for b in sorted(buckets):
-            ps = buckets[b]
-            rows.append([b, round(statistics.median(ps), 1),
-                         round(min(ps), 1), round(max(ps), 1), len(ps)])
-            all_prices.extend(ps)
-            cnt += len(ps)
+            pairs = buckets[b]
+            rows.append([b] + _stats(pairs))
+            all_pairs.extend(pairs)
         detail[iid] = rows
-        daily[iid] = [round(statistics.median(all_prices), 1),
-                      round(min(all_prices), 1), round(max(all_prices), 1), cnt]
+        daily[iid] = _stats(all_pairs)
     return detail, daily
 
 
