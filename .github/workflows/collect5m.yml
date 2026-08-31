@@ -43,14 +43,20 @@ jobs:
         run: |
           git config user.name "DarkNox317"
           git config user.email "DarkNox317@users.noreply.github.com"
-          git add data5m data2 patches.json
-          if git diff --cached --quiet; then
-            echo "no changes"
-            exit 0
-          fi
-          git commit -m "data5m: update"
-          git pull --rebase origin main
-          git push origin main
+          # 이번 실행이 실제로 건드린 파일 목록 (리베이스 충돌로 스윕을 날리지 않기 위함)
+          CHANGED=$(git status --porcelain -- data5m data2 patches.json | awk '{print $NF}')
+          if [ -z "$CHANGED" ]; then echo "no changes"; exit 0; fi
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main
+            git reset -q origin/main          # 리베이스 대신 최신 위에 다시 얹기 → 충돌 자체가 없음
+            git add -- $CHANGED
+            if git diff --cached --quiet; then echo "already up to date"; exit 0; fi
+            git commit -q -m "data5m: update"
+            if git push -q origin main; then echo "pushed (attempt $i)"; exit 0; fi
+            echo "push raced — retry $i"
+            sleep 5
+          done
+          echo "commit failed after 5 attempts"; exit 1
 
       - name: Chain next day
         if: success()
