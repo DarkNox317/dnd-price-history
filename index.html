@@ -277,7 +277,7 @@
 <p class="note">
   전 서버 판매 기록을 수집해 5분 단위·일 단위로 집계 · 날짜 구분은 UTC 기준(= 한국시간 09시~다음날 09시), <b>1일 화면의 시각은 한국시간</b> · 가격 = 개당 판매가 <b>중앙값</b>, 거래량 = 판매 건수 ·
   점선 직선 = 추세 · 선이 끊긴 곳 = 거래·수집 공백 · 속이 빈 회색 점 = <b>표본 부족</b>(그 아이템 평소 거래량의 20% 미만 — 원본 데이터 결손 가능성) ·
-  붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 배포 전 3일 ↔ 후 3일 중앙값 비교로 자동 계산한 참고치 ·
+  붉은 점선 = 패치 배포일, <b>금색 실선 = 시즌 시작(와이프)</b> · 패치 영향은 패치일 ±7일 창의 통계적 변화점 탐지로 자동 판정한 참고치 ·
   시즌 종료 후 마켓 잠금 기간엔 수집이 자동으로 쉬고, 다시 열리면 자동 재개 · 데이터 출처: DarkerDB
 </p>
 
@@ -381,6 +381,18 @@
     };
     const emptyLi = (msg) => '<div class="li" style="cursor:default;color:var(--muted)">' + msg + '</div>';
 
+    // 아이템별 평소 거래량 — 표본 부족일(수집원 결손)을 무버·급증 비교에서도 걸러내기 위함
+    const typCnt = {};
+    {
+      const acc = {};
+      for (const d of withData) {
+        const dm = dayMap[d];
+        for (const id in dm) (acc[id] = acc[id] || []).push(dm[id][3]);
+      }
+      for (const id in acc) typCnt[id] = median(acc[id]);
+    }
+    const lowDay = (v, id) => typCnt[id] >= 50 && v[3] < typCnt[id] * 0.2;
+
     const volAll = [...ids].sort((a, b) => day[b][3] - day[a][3]);
     const volVal = (id) => '<span class="val">' + day[id][3].toLocaleString() + '건 · ' + fmtGold(day[id][0]) + '</span>';
     RANKS.vol = { title: "거래량 TOP — " + L, rows: volAll.map(id => ({ id, val: volVal(id) })) };
@@ -390,7 +402,8 @@
     if (Pd) {
       const prev = dayMap[Pd];
       const movers = ids
-        .filter(id => prev[id] && prev[id][3] >= 5 && day[id][3] >= 5 && prev[id][0] > 0)
+        .filter(id => prev[id] && prev[id][3] >= 5 && day[id][3] >= 5 && prev[id][0] > 0 &&
+                      !lowDay(prev[id], id) && !lowDay(day[id], id))
         .map(id => ({ id, from: prev[id][0], to: day[id][0],
                       pct: (day[id][0] - prev[id][0]) / prev[id][0] * 100 }));
       movers.sort((a, b) => b.pct - a.pct);
@@ -420,7 +433,8 @@
     let wups = [], wdowns = [], wupsAll = [], wdownsAll = [];
     if (Wd) {
       const wk = dayMap[Wd];
-      const mv = ids.filter(id => wk[id] && wk[id][3] >= 5 && day[id][3] >= 5 && wk[id][0] > 0)
+      const mv = ids.filter(id => wk[id] && wk[id][3] >= 5 && day[id][3] >= 5 && wk[id][0] > 0 &&
+                                  !lowDay(wk[id], id) && !lowDay(day[id], id))
         .map(id => ({ id, from: wk[id][0], to: day[id][0], pct: (day[id][0] - wk[id][0]) / wk[id][0] * 100 }));
       mv.sort((a, b) => b.pct - a.pct);
       wupsAll = mv.filter(m => m.pct >= 10);
@@ -550,6 +564,7 @@
       for (const id of ids) {
         const pa = prev[id];
         if (!pa || pa[3] < 20 || pa[0] <= 0) continue;
+        if (lowDay(pa, id)) continue;   // 기준일이 결손일이면 "폭증"이 사실은 회복일 수 있음
         const cnt = day[id][3];
         if (cnt >= 100 && cnt >= pa[3] * 5 && Math.abs(day[id][0] - pa[0]) / pa[0] < 0.05) {
           wash.push({ id, cnt, ratio: cnt / pa[3] });
@@ -1075,7 +1090,6 @@
     if (vis.length < 2) vis = tg;
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
-    const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
     // 시간 비례 X 좌표 — 1일 화면은 00:00~24:00 절대 시각, 일별은 날짜 간격 비례
     let ts;
     if (intraday) {
