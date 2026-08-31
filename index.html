@@ -1067,9 +1067,12 @@
     const giPts = gi.map(i => ({ med: meds[i], cnt: rows[i].cnt }));
     const [lo, hi, pad] = robustRange(giPts);
     const giTrust = trustSet(giPts);
-    let tg = gi.filter((_, k) => giTrust.has(k));               // 통계용: 표본부족 제외 + 신뢰 지점만
+    let tg = gi.filter((_, k) => giTrust.has(k));               // 추세 계산용: 표본부족 제외 + 신뢰 지점만
     if (tg.length < 2) tg = gi;
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));   // 축 범위로 클램프된 값 (그래프에 그려지는 값)
+    // 최고·최저 표기용: 그래프에 실제 위치로 그려진 점은 전부 포함 (눈에 보이는 것과 숫자가 항상 일치)
+    let vis = gi.filter(i => meds[i] >= lo && meds[i] <= hi);
+    if (vis.length < 2) vis = tg;
     const maxCnt = Math.max(...rows.map(r => r.cnt), 1);
 
     const dateIndex = Object.fromEntries(rows.map((r, i) => [r.date, i]));
@@ -1177,9 +1180,9 @@
 
     // 최저·최고점 마커 — 타일의 "기간 최저/최고"와 같은 값(그래프에 그려지는 선 기준)
     let extremes = "";
-    if (tg.length >= 2) {
-      let iMin = tg[0], iMax = tg[0];
-      for (const i of tg) { if (meds[i] < meds[iMin]) iMin = i; if (meds[i] > meds[iMax]) iMax = i; }
+    if (vis.length >= 2) {
+      let iMin = vis[0], iMax = vis[0];
+      for (const i of vis) { if (meds[i] < meds[iMin]) iMin = i; if (meds[i] > meds[iMax]) iMax = i; }
       const mark = (i, kind) => {
         const x = sx(i), y = sy(meds[i]);
         const anchor = i < rows.length * 0.12 ? "start" : i > rows.length * 0.88 ? "end" : "middle";
@@ -1226,8 +1229,8 @@
     tiles.innerHTML =
       tile("최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
       tile("기간 변동 (추세)", fmtPct(change), cls) +
-      tile("기간 최저", fmtGold(Math.min(...tg.map(i => meds[i])))) +
-      tile("기간 최고", fmtGold(Math.max(...tg.map(i => meds[i])))) +
+      tile("기간 최저", fmtGold(Math.min(...vis.map(i => meds[i])))) +
+      tile("기간 최고", fmtGold(Math.max(...vis.map(i => meds[i])))) +
       tile("기간 거래", tot.toLocaleString() + ' <small>건</small>');
 
     // 패치 영향 목록
