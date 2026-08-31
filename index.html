@@ -1154,6 +1154,20 @@
     return [lo, hi, pad];
   }
 
+  // 깔끔한 눈금: 간격을 1·2·2.5·5 ×10ⁿ 중에서 골라 딱 떨어지는 값에만 눈금을 긋는다
+  function niceTicks (lo, hi, n) {
+    const span = hi - lo;
+    if (span <= 0) return [lo];
+    const rough = span / n;
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    let step = mag * 10;
+    for (const m of [1, 2, 2.5, 5, 10]) { if (mag * m >= rough) { step = mag * m; break; } }
+    const out = [];
+    const start = Math.ceil(lo / step) * step;
+    for (let i = 0; start + i * step <= hi + step * 0.01; i++) out.push(start + i * step);
+    return out;
+  }
+
   // 렌더 경쟁 방지: 버튼 연타 시 늦게 끝난 옛 렌더가 새 화면을 덮어쓰지 않게
   let renderSeq = 0;
 
@@ -1228,7 +1242,7 @@
     }
 
 
-    const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
+    const yTicks = niceTicks(lo, hi, 7).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
       '<text x="' + (P.l - 7) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
     ).join("");
@@ -1461,7 +1475,7 @@
     const sx = (d) => P.l + (d / maxDays) * (W - P.l - P.r);
     const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
-    const yTicks = Array.from({ length: 7 }, (_, i) => lo + pad + i * (hi - lo - 2 * pad) / 6).map(v =>
+    const yTicks = niceTicks(lo, hi, 7).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
       '<text x="' + (P.l - 7) + '" y="' + (sy(v) + 3).toFixed(1) + '" fill="var(--muted)" font-size="10" font-family="var(--mono)" text-anchor="end">' + fmtGold(v) + '</text>'
     ).join("");
