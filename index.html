@@ -162,9 +162,14 @@
     font-variant-numeric: tabular-nums; color: var(--ink-2); flex: none; }
   .li .val.up { color: var(--up); font-weight: 700; }
   .li .val.down { color: var(--down); font-weight: 700; }
-  #btn-home { background: none; border: none; color: var(--muted); cursor: pointer;
+  #btn-home, #rank-back { background: none; border: none; color: var(--muted); cursor: pointer;
     font-size: .82rem; font-family: var(--sans); padding: .2rem .4rem; }
-  #btn-home:hover { color: var(--accent); }
+  #btn-home:hover, #rank-back:hover { color: var(--accent); }
+  .rankable { cursor: pointer; }
+  .rankable:hover { color: var(--accent); }
+  .rankable .more { float: right; font-size: .68rem; color: var(--accent); font-weight: 400; }
+  .rankno { font-family: var(--mono); font-size: .75rem; color: var(--muted);
+    width: 2.2rem; flex: none; text-align: right; padding-right: .2rem; }
 </style>
 </head>
 <body>
@@ -202,14 +207,14 @@
     <div id="dash" hidden>
       <div class="tiles" id="h_tiles"></div>
       <div class="cols">
-        <div><h3>최근 수집일 거래량 TOP</h3><div id="h_vol"></div></div>
-        <div><h3>급등 (직전 수집일 대비)</h3><div id="h_up"></div></div>
-        <div><h3>급락 (직전 수집일 대비)</h3><div id="h_down"></div></div>
+        <div><h3 class="rankable" data-rank="vol">최근 수집일 거래량 TOP <span class="more">전체 ▸</span></h3><div id="h_vol"></div></div>
+        <div><h3 class="rankable" data-rank="up">급등 (직전 수집일 대비) <span class="more">전체 ▸</span></h3><div id="h_up"></div></div>
+        <div><h3 class="rankable" data-rank="down">급락 (직전 수집일 대비) <span class="more">전체 ▸</span></h3><div id="h_down"></div></div>
       </div>
       <div class="cols">
-        <div><h3>주간 급등 (7일 대비)</h3><div id="h_wup"></div></div>
-        <div><h3>주간 급락 (7일 대비)</h3><div id="h_wdown"></div></div>
-        <div><h3>거래량 급증 (평소 대비)</h3><div id="h_surge"></div></div>
+        <div><h3 class="rankable" data-rank="wup">주간 급등 (7일 대비) <span class="more">전체 ▸</span></h3><div id="h_wup"></div></div>
+        <div><h3 class="rankable" data-rank="wdown">주간 급락 (7일 대비) <span class="more">전체 ▸</span></h3><div id="h_wdown"></div></div>
+        <div><h3 class="rankable" data-rank="surge">거래량 급증 (평소 대비) <span class="more">전체 ▸</span></h3><div id="h_surge"></div></div>
       </div>
       <div class="cols">
         <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
@@ -220,6 +225,13 @@
         <div id="h_fav"></div>
       </div>
     </div>
+  </div>
+  <div id="rankview" hidden>
+    <div class="item-head">
+      <button id="rank-back" type="button" title="홈으로">←</button>
+      <h2 id="rank-title"></h2>
+    </div>
+    <div id="rank-list" style="margin-top:.8rem"></div>
   </div>
   <div id="view" hidden>
     <div class="item-head">
@@ -362,11 +374,12 @@
         '<span class="nm">' + ko + '</span>' + valHtml + '</div>';
     };
 
-    const topVol = [...ids].sort((a, b) => day[b][3] - day[a][3]).slice(0, 8);
-    $("h_vol").innerHTML = topVol.map(id =>
-      li(id, '<span class="val">' + day[id][3].toLocaleString() + '건 · ' + fmtGold(day[id][0]) + '</span>')).join("");
+    const volAll = [...ids].sort((a, b) => day[b][3] - day[a][3]);
+    const volVal = (id) => '<span class="val">' + day[id][3].toLocaleString() + '건 · ' + fmtGold(day[id][0]) + '</span>';
+    RANKS.vol = { title: "거래량 TOP — " + L, rows: volAll.map(id => ({ id, val: volVal(id) })) };
+    $("h_vol").innerHTML = volAll.slice(0, 8).map(id => li(id, volVal(id))).join("");
 
-    let ups = [], downs = [];
+    let ups = [], downs = [], upsAll = [], downsAll = [];
     if (Pd) {
       const prev = dayMap[Pd];
       const movers = ids
@@ -374,12 +387,16 @@
         .map(id => ({ id, from: prev[id][0], to: day[id][0],
                       pct: (day[id][0] - prev[id][0]) / prev[id][0] * 100 }));
       movers.sort((a, b) => b.pct - a.pct);
-      ups = movers.filter(m => m.pct >= 3).slice(0, 6);
-      downs = movers.filter(m => m.pct <= -3).slice(-6).reverse();
+      upsAll = movers.filter(m => m.pct >= 3);
+      downsAll = movers.filter(m => m.pct <= -3).reverse();
+      ups = upsAll.slice(0, 6);
+      downs = downsAll.slice(0, 6);
     }
     const moverVal = (m, cls) =>
       '<span class="val">' + fmtGold(m.from) + '→<b style="color:var(--ink)">' + fmtGold(m.to) + '</b> ' +
       '<span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
+    RANKS.up = { title: "급등 전체 — " + (Pd || "") + " → " + L, rows: upsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
+    RANKS.down = { title: "급락 전체 — " + (Pd || "") + " → " + L, rows: downsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
     $("h_up").innerHTML = ups.length ? ups.map(m =>
       li(m.id, moverVal(m, "val up"))).join("") :
       '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
@@ -393,15 +410,19 @@
     for (let i = idxL - 1; i >= 0; i--) {
       if ((new Date(L) - new Date(withData[i])) / 864e5 >= 6) { Wd = withData[i]; break; }
     }
-    let wups = [], wdowns = [];
+    let wups = [], wdowns = [], wupsAll = [], wdownsAll = [];
     if (Wd) {
       const wk = dayMap[Wd];
       const mv = ids.filter(id => wk[id] && wk[id][3] >= 5 && day[id][3] >= 5 && wk[id][0] > 0)
         .map(id => ({ id, from: wk[id][0], to: day[id][0], pct: (day[id][0] - wk[id][0]) / wk[id][0] * 100 }));
       mv.sort((a, b) => b.pct - a.pct);
-      wups = mv.filter(m => m.pct >= 10).slice(0, 6);
-      wdowns = mv.filter(m => m.pct <= -10).slice(-6).reverse();
+      wupsAll = mv.filter(m => m.pct >= 10);
+      wdownsAll = mv.filter(m => m.pct <= -10).reverse();
+      wups = wupsAll.slice(0, 6);
+      wdowns = wdownsAll.slice(0, 6);
     }
+    RANKS.wup = { title: "주간 급등 전체 — " + (Wd || "") + " → " + L, rows: wupsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
+    RANKS.wdown = { title: "주간 급락 전체 — " + (Wd || "") + " → " + L, rows: wdownsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
     const emptyLi = (msg) => '<div class="li" style="cursor:default;color:var(--muted)">' + msg + '</div>';
     $("h_wup").innerHTML = wups.length ? wups.map(m => li(m.id, moverVal(m, "val up"))).join("") :
       emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
@@ -410,18 +431,21 @@
 
     // 거래량 급증: 직전 수집일들(최대 7일) 평균의 3배 이상
     const prevDays = withData.slice(Math.max(0, idxL - 7), idxL);
-    let surges = [];
+    let surges = [], surgesAll = [];
     if (prevDays.length >= 2) {
       for (const id of ids) {
         const hist = prevDays.map(d => (dayMap[d][id] || [0, 0, 0, 0])[3]);
         const avg = hist.reduce((s, v) => s + v, 0) / hist.length;
         if (avg >= 5 && day[id][3] >= 30 && day[id][3] >= avg * 3) {
-          surges.push({ id, cnt: day[id][3], ratio: day[id][3] / avg });
+          surgesAll.push({ id, cnt: day[id][3], ratio: day[id][3] / avg });
         }
       }
-      surges.sort((a, b) => b.ratio - a.ratio);
-      surges = surges.slice(0, 6);
+      surgesAll.sort((a, b) => b.ratio - a.ratio);
+      surges = surgesAll.slice(0, 6);
     }
+    const surgeVal = (m) => '<span class="val">' + m.cnt.toLocaleString() + '건 <b style="color:var(--ink)">×' +
+      (Math.round(m.ratio * 10) / 10) + '</b></span>';
+    RANKS.surge = { title: "거래량 급증 전체 — " + L, rows: surgesAll.map(m => ({ id: m.id, val: surgeVal(m) })) };
     $("h_surge").innerHTML = surges.length ? surges.map(m =>
       li(m.id, '<span class="val">' + m.cnt.toLocaleString() + '건 <b style="color:var(--ink)">×' +
         (Math.round(m.ratio * 10) / 10) + '</b></span>')).join("") :
@@ -484,6 +508,37 @@
     HOME_DAY = day; HOME_PREV = Pd ? dayMap[Pd] : null;
     renderFavs();
   }
+
+  /* ── 전체 순위 보기 ── */
+  const RANKS = {};
+  function showRank (key) {
+    const r = RANKS[key];
+    if (!r || !r.rows.length) return;
+    $("home").hidden = true;
+    $("view").hidden = true;
+    $("rankview").hidden = false;
+    $("rank-title").textContent = r.title + " (" + r.rows.length.toLocaleString() + "개)";
+    $("rank-list").innerHTML = r.rows.map((x, i) => {
+      const [ko, , rar] = CATALOG[x.id] || [x.id, "", ""];
+      return '<div class="li" data-id="' + x.id + '"><span class="rankno">' + (i + 1) + '</span>' +
+        '<span class="rdot" style="background:' + (RARITY_COLOR[rar] || "#999") + '"></span>' +
+        '<span class="nm">' + ko + ' <small style="color:var(--muted)">' + (RARITY_KO[rar] || "") + '</small></span>' +
+        x.val + '</div>';
+    }).join("");
+    window.scrollTo(0, 0);
+  }
+  $("dash").addEventListener("click", (ev) => {
+    const h = ev.target.closest(".rankable");
+    if (h) showRank(h.dataset.rank);
+  });
+  $("rank-back").addEventListener("click", () => {
+    $("rankview").hidden = true;
+    $("home").hidden = false;
+  });
+  $("rank-list").addEventListener("click", (ev) => {
+    const el = ev.target.closest(".li");
+    if (el && el.dataset.id) selectItem(el.dataset.id);
+  });
 
   /* ── 즐겨찾기 섹션 (홈 하단) ── */
   let HOME_DAY = null, HOME_PREV = null;
@@ -637,6 +692,7 @@
     const [ko, en, rar] = CATALOG[id];
     q.value = ko;
     $("home").hidden = true;
+    $("rankview").hidden = true;
     $("view").hidden = false;
     $("v_ko").textContent = ko;
     $("v_en").textContent = en;
