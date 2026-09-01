@@ -2,7 +2,8 @@ name: collect5m
 
 on:
   schedule:
-    - cron: "8 * * * *"   # 안전망: 새 날짜 감지·실패 복구용 (평소엔 체인이 즉시 이어감)
+    - cron: "10 0 * * *"   # 하루 1회, UTC 자정 직후(한국시간 09:10) — 막 끝난 어제치를 수집
+                           # 실패하거나 며칠 밀려도 다음 실행이 오래된 날짜부터 체인으로 따라잡음
   workflow_dispatch:
     inputs:
       date:
