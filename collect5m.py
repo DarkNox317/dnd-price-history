@@ -248,8 +248,9 @@ def main():
     elif args.auto:
         have = collected_days()
         day = None
-        # 가장 오래된 미수집 날짜부터 — API 보존 기간이 끝나 소멸되기 전의 날짜를 먼저 구한다
-        for back in range(BACKFILL_WINDOW_DAYS, 0, -1):
+        # 24시간 텀 확보: 가장 최근 수집 대상은 today-2 (직전 완결일 today-1은 데이터 끝이
+        # 실행 시각에 거의 붙어 있어 매물 확정도가 낮음). 오래된 미수집 날짜부터 채운다.
+        for back in range(BACKFILL_WINDOW_DAYS, 1, -1):
             d = today - dt.timedelta(days=back)
             if d.strftime("%Y-%m-%d") not in have:
                 day = d
@@ -258,7 +259,7 @@ def main():
             print("nothing to collect (all days present)", flush=True)
             return
     else:
-        day = today - dt.timedelta(days=1)
+        day = today - dt.timedelta(days=2)
 
     # 마켓 잠금(시즌 초기화) 감지: 전역 판매 0이면 빈 날로 기록하고 종료
     probe = api_get("/v2/market", {"has_sold": "true",
