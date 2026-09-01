@@ -780,8 +780,9 @@
   }
 
   function showRank (key) {
+    const dyn = key === "vol" || key === "gval";        // 기간 합산형은 정적 목록이 비어도 열림
     const r = RANKS[key];
-    if (!r || !r.rows.length) return;
+    if (!dyn && (!r || !r.rows.length)) return;
     if (currentRank !== key) { rankFilter = "all"; rankPeriod = "d"; }   // 다른 순위로 이동하면 초기화
     currentRank = key;
     $("home").hidden = true;
@@ -840,9 +841,12 @@
     renderTurn();
   });
 
+  let turnSeq = 0;
   async function renderTurn () {
+    const seq = ++turnSeq;                              // 렌더 경쟁 방지 (모드 연타 대응)
     const chart = $("turn-chart"), tip = $("turn-tip"), tiles = $("turn-tiles");
     chart.innerHTML = ""; tiles.innerHTML = "";
+    tip.style.opacity = "0";                            // 모드 전환 시 툴팁 잔상 제거
     if (!HOME_WITHDATA) return;
     const valOf = (v) => (v.length > 8 && v[8] != null) ? v[8] : null;
     const intraday = turnRange === "1d";
@@ -857,6 +861,7 @@
         try { day5mCache[d] = await fetch("data5m/" + d + ".json").then(r => r.json()); }
         catch (e) { day5mCache[d] = { items: {} }; }
       }
+      if (seq !== turnSeq) return;                      // 더 새 렌더가 시작됐으면 중단
       const sums = {};
       for (const id in (day5mCache[d].items || {})) {
         for (const b of day5mCache[d].items[id]) {
