@@ -162,9 +162,9 @@
     font-variant-numeric: tabular-nums; color: var(--ink-2); flex: none; }
   .li .val.up { color: var(--up); font-weight: 700; }
   .li .val.down { color: var(--down); font-weight: 700; }
-  #btn-home, #rank-back { background: none; border: none; color: var(--muted); cursor: pointer;
+  #btn-home, #rank-back, #turn-back { background: none; border: none; color: var(--muted); cursor: pointer;
     font-size: .82rem; font-family: var(--sans); padding: .2rem .4rem; }
-  #btn-home:hover, #rank-back:hover { color: var(--accent); }
+  #btn-home:hover, #rank-back:hover, #turn-back:hover { color: var(--accent); }
   .rankable { cursor: pointer; }
   .rankable:hover { color: var(--accent); }
   .rankable .more { float: right; font-size: .68rem; color: var(--accent); font-weight: 400; }
@@ -892,7 +892,7 @@
     let lo = Math.min(...vs) * 0.92, hi = Math.max(...vs) * 1.04;
     if (!(hi > lo)) { lo = 0; hi = vs[0] * 1.2 || 1; }
     const sx = (r) => rows.length === 1 ? (P.l + W - P.r) / 2 : P.l + r.x * (W - P.l - P.r);
-    const sy = (v) => H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b);
+    const sy = (v) => { v = Math.max(lo, Math.min(hi, v)); return H - P.b - ((v - lo) / (hi - lo)) * (H - P.t - P.b); };
 
     const yT = niceTicks(lo, hi, 6).map(v =>
       '<line x1="' + P.l + '" y1="' + sy(v).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + sy(v).toFixed(1) + '" stroke="var(--grid)"/>' +
@@ -913,10 +913,46 @@
     }
     const line = rows.map((r, i) => (i ? "L" : "M") + sx(r).toFixed(1) + "," + sy(r.v).toFixed(1)).join(" ");
 
+    // 추세선 (아이템 차트와 동일 규칙: ±3% 기준 빨강/파랑/회색)
+    let trend = "", trendPct = null;
+    if (rows.length >= 3) {
+      const n = rows.length;
+      const mt = rows.reduce((s, r) => s + r.x, 0) / n;
+      const mv = rows.reduce((s, r) => s + r.v, 0) / n;
+      let num = 0, den = 0;
+      for (const r of rows) { num += (r.x - mt) * (r.v - mv); den += (r.x - mt) * (r.x - mt); }
+      const slope = den ? num / den : 0;
+      const ty0 = mv + slope * (rows[0].x - mt), ty1 = mv + slope * (rows[n - 1].x - mt);
+      if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
+      const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
+                   trendPct !== null && trendPct <= -3 ? "var(--down)" : "var(--muted)";
+      trend = '<line x1="' + sx(rows[0]).toFixed(1) + '" y1="' + sy(ty0).toFixed(1) +
+        '" x2="' + sx(rows[n - 1]).toFixed(1) + '" y2="' + sy(ty1).toFixed(1) +
+        '" stroke="' + tcol + '" stroke-width="1.5" stroke-dasharray="7 5" opacity=".75"/>';
+    }
+
+    // 최저·최고점 마커 (▲빨강/▼파랑 + 실제 값)
+    let extremes = "";
+    if (rows.length >= 2) {
+      let iMin = 0, iMax = 0;
+      rows.forEach((r, i) => { if (r.v < rows[iMin].v) iMin = i; if (r.v > rows[iMax].v) iMax = i; });
+      const mark = (i, kind) => {
+        const r = rows[i], x = sx(r), y = sy(r.v);
+        const anchor = i < rows.length * 0.12 ? "start" : i > rows.length * 0.88 ? "end" : "middle";
+        const col = kind === "hi" ? "var(--up)" : "var(--down)";
+        const ty = kind === "hi" ? y - 8 : y + 16;
+        return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.6" fill="' + col + '" stroke="var(--surface)" stroke-width="1.4"/>' +
+          '<text x="' + x.toFixed(1) + '" y="' + ty.toFixed(1) + '" fill="' + col + '" font-size="9.5" font-weight="700" font-family="var(--mono)" text-anchor="' + anchor + '">' +
+          (kind === "hi" ? "▲" : "▼") + fmtGold(r.v) + '</text>';
+      };
+      if (iMax !== iMin) extremes = mark(iMax, "hi") + mark(iMin, "lo");
+    }
+
     chart.innerHTML =
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="골드 회전량 차트">' +
       yT + xL +
       '<path d="' + line + '" fill="none" stroke="var(--vol)" stroke-width="2" stroke-linejoin="round"/>' +
+      trend + extremes +
       '<line id="tcross" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="var(--ink-2)" opacity="0"/>' +
       '<rect id="thit" x="' + P.l + '" y="' + P.t + '" width="' + (W - P.l - P.r) + '" height="' + (H - P.t - P.b) + '" fill="transparent"/>' +
       '</svg>';
@@ -926,7 +962,9 @@
     tiles.innerHTML =
       tile("기간", title) +
       tile(intraday ? "그날 합계" : "기간 합계", fmtGold(tot) + ' <small>골드</small>') +
-      tile("최고 " + (intraday ? "5분" : "하루"), fmtGold(peak.v) + ' <small>' + peak.label + '</small>');
+      tile("최고 " + (intraday ? "5분" : "하루"), fmtGold(peak.v) + ' <small>' + peak.label + '</small>') +
+      (trendPct !== null ? tile("기간 변동 (추세)", fmtPct(trendPct),
+        trendPct >= 3 ? "up" : trendPct <= -3 ? "down" : "") : "");
 
     const svg = chart.querySelector("svg");
     const hitR = svg.querySelector("#thit"), cross = svg.querySelector("#tcross");
