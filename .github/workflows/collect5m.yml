@@ -70,7 +70,8 @@ jobs:
           if os.path.isdir("data5m"):
               have = {f[:-5] for f in os.listdir("data5m") if f.endswith(".json") and f != "index.json"}
           today = dt.datetime.now(dt.timezone.utc).date()
-          missing = [(today - dt.timedelta(days=b)).strftime("%Y-%m-%d") for b in range(1, 16)]
+          # 수집기(collect5m.py --auto)와 동일 범위: 24시간 텀 확보 위해 today-1 제외, today-2부터
+          missing = [(today - dt.timedelta(days=b)).strftime("%Y-%m-%d") for b in range(2, 16)]
           sys.exit(0 if any(d not in have for d in missing) else 1)
           EOF
           then
