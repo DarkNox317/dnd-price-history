@@ -508,7 +508,7 @@
         const slope = num / den;
         const pct = (Math.exp(slope * (s[n - 1].t - s[0].t)) - 1) * 100;
         const meds = s.map(p => p.med);
-        const rec = { id, pct, lo: Math.min(...meds), hi: Math.max(...meds), days: n };
+        const rec = { id, pct, lo: Math.min(...meds), hi: Math.max(...meds), to: s[n - 1].med, days: n };
         if (pct >= 10) ups.push(rec);
         else if (pct <= -10) downs.push(rec);
       }
@@ -516,12 +516,15 @@
       downs.sort((a, b) => a.pct - b.pct);
       return { ups, downs };
     }
-    // 급등은 최저→최고, 급락은 최고→최저 (움직인 방향대로 읽히게)
+    // 주간: 급등은 최저→최고, 급락은 최고→최저 (움직인 방향대로 읽히게)
     const trendValHtml = (m, cls) => {
       const [a, b] = m.pct >= 0 ? [m.lo, m.hi] : [m.hi, m.lo];
       return '<span class="val">' + m.days + '일 · ' + fmtGold(a) + '→<b style="color:var(--ink)">' + fmtGold(b) + '</b> ' +
         '<span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
     };
+    // 월간: 최근 중앙값만
+    const trendRecentHtml = (m, cls) => '<span class="val">' + m.days + '일 · ' + fmtGold(m.to) +
+      ' <span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
 
     const wDays = withData.filter(d => (new Date(L) - new Date(d)) / 864e5 < 7);
     const { ups: wupsAll, downs: wdownsAll } = trendMovers(wDays, 3);
@@ -533,12 +536,12 @@
     const mDays = withData.slice(-30);
     const { ups: mupsAll, downs: mdownsAll } = trendMovers(mDays, 5);
     RANKS.mup = { title: "월간 추세 급등 전체 — 최근 " + mDays.length + "일 추세 기준",
-                  rows: mupsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val up") })) };
+                  rows: mupsAll.map(m => ({ id: m.id, val: trendRecentHtml(m, "val up") })) };
     RANKS.mdown = { title: "월간 추세 급락 전체 — 최근 " + mDays.length + "일 추세 기준",
-                    rows: mdownsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val down") })) };
-    $("h_mup").innerHTML = mupsAll.length ? mupsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val up"))).join("") :
+                    rows: mdownsAll.map(m => ({ id: m.id, val: trendRecentHtml(m, "val down") })) };
+    $("h_mup").innerHTML = mupsAll.length ? mupsAll.slice(0, 6).map(m => li(m.id, trendRecentHtml(m, "val up"))).join("") :
       emptyLi(mDays.length >= 5 ? "추세 +10% 이상 없음" : "5일치가 쌓이면 표시돼");
-    $("h_mdown").innerHTML = mdownsAll.length ? mdownsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val down"))).join("") :
+    $("h_mdown").innerHTML = mdownsAll.length ? mdownsAll.slice(0, 6).map(m => li(m.id, trendRecentHtml(m, "val down"))).join("") :
       emptyLi(mDays.length >= 5 ? "추세 -10% 이하 없음" : "5일치가 쌓이면 표시돼");
     $("h_wup").innerHTML = wupsAll.length ? wupsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val up"))).join("") :
       emptyLi(wDays.length >= 3 ? "추세 +10% 이상 없음" : "3일치가 쌓이면 표시돼");
@@ -1647,8 +1650,8 @@
     tiles.innerHTML =
       tile("최근 중앙값", fmtGold(endMed) + ' <small>골드</small>') +
       tile("기간 변동 (추세)", fmtPct(change), cls) +
-      tile("기간 최저", fmtGold(Math.min(...vis.map(i => meds[i])))) +
-      tile("기간 최고", fmtGold(Math.max(...vis.map(i => meds[i])))) +
+      tile("기간 최저", fmtGold(Math.min(...vis.map(i => meds[i]))), "down") +
+      tile("기간 최고", fmtGold(Math.max(...vis.map(i => meds[i]))), "up") +
       tile("기간 거래", tot.toLocaleString() + ' <small>건</small>');
 
     // 패치 영향 목록
