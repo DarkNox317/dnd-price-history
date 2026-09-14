@@ -260,6 +260,7 @@
     </div>
     <div class="ranges" id="rank-period" style="margin:.7rem 0 .1rem" hidden></div>
     <div class="ranges" id="rank-filter" style="margin:.4rem 0 .3rem"></div>
+    <div class="ranges" id="rank-rarity" style="margin:.2rem 0 .3rem"></div>
     <div id="rank-list" style="margin-top:.5rem"></div>
   </div>
   <div id="view" hidden>
@@ -710,6 +711,7 @@
   let rankFilter = "all";      // 순위 화면 카테고리 필터
   let rankPeriod = "d";        // 거래량·거래대금 TOP 의 기간 (일간/주간/월간/시즌)
   let rankMin1k = false;       // 최근 중앙값 1k 이상만 보기 (순위 화면 사이에서도 유지)
+  let rankRarity = "all";      // 순위 화면 희귀도 필터
   let HOME_DAYMAP = null, HOME_WITHDATA = null;
 
   // 아이템의 최근 중앙값: 가장 최근에 거래가 있던 날의 중앙값
@@ -774,7 +776,13 @@
     }
     let rows = rankFilter === "all" ? r.rows :
       r.rows.filter(x => (CATALOG[x.id] || [])[3] === rankFilter);
+    if (rankRarity !== "all") rows = rows.filter(x => (CATALOG[x.id] || [])[2] === rankRarity);
     if (rankMin1k) rows = rows.filter(x => recentMed(x.id) >= 1000);
+    $("rank-rarity").innerHTML = ['all', ...Object.keys(RARITY_KO)].map(r =>
+      '<button class="rng" data-rarity="' + r + '" data-on="' + (rankRarity === r ? 1 : 0) + '" type="button">' +
+      (r === "all" ? "희귀도 전체" :
+        '<span class="rdot" style="background:' + RARITY_COLOR[r] + ';width:8px;height:8px;margin-right:4px"></span>' + RARITY_KO[r]) +
+      '</button>').join("");
     $("rank-title").textContent = r.title + " (" + rows.length.toLocaleString() + "개)";
     $("rank-filter").innerHTML = ['all', 'weapon', 'armor', 'accessory', 'utility', 'misc'].map(t =>
       '<button class="rng" data-type="' + t + '" data-on="' + (rankFilter === t ? 1 : 0) + '" type="button">' +
@@ -793,7 +801,7 @@
     const dyn = key === "vol" || key === "gval";        // 기간 합산형은 정적 목록이 비어도 열림
     const r = RANKS[key];
     if (!dyn && (!r || !r.rows.length)) return;
-    if (currentRank !== key) { rankFilter = "all"; rankPeriod = "d"; }   // 다른 순위로 이동하면 초기화
+    if (currentRank !== key) { rankFilter = "all"; rankRarity = "all"; rankPeriod = "d"; }   // 다른 순위로 이동하면 초기화
     currentRank = key;
     $("home").hidden = true;
     $("view").hidden = true;
@@ -808,6 +816,12 @@
     if (!b) return;
     if (b.dataset.min1k) rankMin1k = !rankMin1k;
     else rankFilter = b.dataset.type;
+    renderRankList();
+  });
+  $("rank-rarity").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-rarity]");
+    if (!b) return;
+    rankRarity = b.dataset.rarity;
     renderRankList();
   });
   $("rank-period").addEventListener("click", (ev) => {
