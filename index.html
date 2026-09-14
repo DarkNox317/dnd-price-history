@@ -468,49 +468,28 @@
 
     const idxL = withData.indexOf(L);
 
-    // 주간·월간 무버: 구간의 추세선(로그 최소제곱) 기울기 기준.
-    // 자료가 구간보다 적으면 있는 날짜만으로 계산 (아이템당 최소 minDays 일 필요).
-    // 지점은 거래 5건+ 인 날만 쓰고, 표본 부족일(평소 거래량 20% 미만)·골드 이송일은 제외.
-    // 기간 최저·최고는 이렇게 걸러진 지점들의 중앙값에서 뽑는다 (튀는 날에 안 끌려감).
-    function trendMovers (days, minDays) {
+    // 주간·월간 무버: 아이템 화면의 "기간 변동 (추세)" 타일과 같은 계산(trendStats)으로 순위를 매긴다.
+    // 구간 = 아이템의 마지막 거래일 기준 최근 N일 (아이템 화면 1주/1달과 동일), 그 마지막 거래일이
+    // 전체 최신일로부터 N일 안에 있어야 함(오래 안 팔린 아이템 제외). 추세에 쓰인 날이 minDays 이상이어야 함.
+    function trendMovers (N, minDays) {
       const ups = [], downs = [];
-      if (days.length < minDays) return { ups, downs };
-      const t0 = new Date(days[0]).getTime();
-      const span = Math.max(1, new Date(days[days.length - 1]).getTime() - t0);
       const seriesMap = {};
-      for (const d of days) {
+      for (const d of withData) {
         const dm = dayMap[d];
-        const tt = (new Date(d).getTime() - t0) / span;
         for (const id in dm) {
           const v = dm[id];
-          if (v[3] >= 5 && v[0] > 0) (seriesMap[id] = seriesMap[id] || []).push({ t: tt, med: v[0], cnt: v[3] });
+          if (v[0] > 0) (seriesMap[id] = seriesMap[id] || []).push({ date: d, med: v[0], cnt: v[3] });
         }
       }
+      const cutL = shiftDate(L, -(N - 1));
       for (const id in seriesMap) {
-        let s = seriesMap[id];
-        if (s.length < minDays) continue;
-        // 골드 이송 거래일(평소 가격 10배↑/10분의1↓) 제외 — 추세가 세탁 거래에 안 끌려가게
-        const pmed = median(s.map(p => p.med));
-        s = s.filter(p => p.med <= pmed * 10 && p.med >= pmed / 10);
-        if (s.length < minDays) continue;
-        const cmed = median(s.map(p => p.cnt));
-        if (cmed >= 50) {
-          const f = s.filter(p => p.cnt >= cmed * 0.2);
-          if (f.length >= minDays) s = f;
-        }
-        // 로그 공간 회귀: %-변화가 대칭·안정적이고, 적합 시작값이 0에 가까워지며 %가 폭발하는 일이 없음
-        const n = s.length;
-        const mt = s.reduce((a, p) => a + p.t, 0) / n;
-        const my = s.reduce((a, p) => a + Math.log(p.med), 0) / n;
-        let num = 0, den = 0;
-        for (const p of s) { num += (p.t - mt) * (Math.log(p.med) - my); den += (p.t - mt) * (p.t - mt); }
-        if (!den) continue;
-        const slope = num / den;
-        const pct = (Math.exp(slope * (s[n - 1].t - s[0].t)) - 1) * 100;
-        const meds = s.map(p => p.med);
-        const rec = { id, pct, lo: Math.min(...meds), hi: Math.max(...meds), to: s[n - 1].med, days: n };
-        if (pct >= 10) ups.push(rec);
-        else if (pct <= -10) downs.push(rec);
+        const pts = seriesMap[id];
+        if (pts[pts.length - 1].date < cutL) continue;
+        const st = trendStats(pts, N);
+        if (!st || st.pct === null || st.days < minDays) continue;
+        const rec = { id, pct: st.pct, lo: st.lo, hi: st.hi, to: st.to, days: st.days };
+        if (st.pct >= 10) ups.push(rec);
+        else if (st.pct <= -10) downs.push(rec);
       }
       ups.sort((a, b) => b.pct - a.pct);
       downs.sort((a, b) => a.pct - b.pct);
@@ -527,14 +506,14 @@
       ' <span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
 
     const wDays = withData.filter(d => (new Date(L) - new Date(d)) / 864e5 < 7);
-    const { ups: wupsAll, downs: wdownsAll } = trendMovers(wDays, 3);
+    const { ups: wupsAll, downs: wdownsAll } = trendMovers(7, 3);
     RANKS.wup = { title: "주간 추세 급등 전체 — 최근 " + wDays.length + "일 추세 기준",
                   rows: wupsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val up") })) };
     RANKS.wdown = { title: "주간 추세 급락 전체 — 최근 " + wDays.length + "일 추세 기준",
                     rows: wdownsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val down") })) };
 
     const mDays = withData.slice(-30);
-    const { ups: mupsAll, downs: mdownsAll } = trendMovers(mDays, 5);
+    const { ups: mupsAll, downs: mdownsAll } = trendMovers(30, 5);
     RANKS.mup = { title: "월간 추세 급등 전체 — 최근 " + mDays.length + "일 추세 기준",
                   rows: mupsAll.map(m => ({ id: m.id, val: trendRecentHtml(m, "val up") })) };
     RANKS.mdown = { title: "월간 추세 급락 전체 — 최근 " + mDays.length + "일 추세 기준",
@@ -1423,6 +1402,50 @@
       if (p.cnt >= 5 || mad === 0 || Math.abs(0.6745 * (p.med - m) / mad) <= 3.5) t.add(i);
     });
     return t;
+  }
+  // 아이템 화면 render() 의 일별 추세 계산을 그대로 옮긴 것 — 순위(주간·월간 무버)가 타일과 같은 숫자를 내도록.
+  // ⚠ render() 의 lowSet → gi → robustRange 클램프 → trustSet → tg → 최소제곱 순서를 바꾸면 여기도 같이 바꿀 것.
+  // pts: [{date, med, cnt}] 날짜순 전체, N: 마지막 거래일 기준 최근 N일 창
+  function trendStats (pts, N) {
+    if (!pts.length) return null;
+    const cut = shiftDate(pts[pts.length - 1].date, -(N - 1));
+    const rows = pts.filter(p => p.date >= cut);
+    const meds = rows.map(r => r.med);
+    const lowSet = new Set();
+    if (rows.length >= 5) {
+      const cmed = median(rows.map(r => r.cnt));
+      if (cmed >= 50) rows.forEach((r, i) => { if (r.cnt < cmed * 0.2) lowSet.add(i); });
+    }
+    let gi = rows.map((_, i) => i).filter(i => !lowSet.has(i));
+    if (gi.length < 2) gi = rows.map((_, i) => i);
+    const giPts = gi.map(i => ({ med: meds[i], cnt: rows[i].cnt }));
+    const [lo, hi] = robustRange(giPts);
+    const giTrust = trustSet(giPts);
+    let tg = gi.filter((_, k) => giTrust.has(k));
+    if (tg.length < 2) tg = gi;
+    const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
+    let vis = gi.filter(i => meds[i] >= lo && meds[i] <= hi);
+    if (vis.length < 2) vis = tg;
+    let ts;
+    if (rows.length > 1) {
+      const t0 = new Date(rows[0].date).getTime();
+      const t1 = new Date(rows[rows.length - 1].date).getTime();
+      ts = rows.map(r => (new Date(r.date).getTime() - t0) / Math.max(1, t1 - t0));
+    } else ts = [0.5];
+    let pct = null;
+    if (tg.length >= 3) {
+      const n = tg.length;
+      const mt = tg.reduce((s, i) => s + ts[i], 0) / n;
+      const my = tg.reduce((s, i) => s + ys[i], 0) / n;
+      let num = 0, den = 0;
+      for (const i of tg) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
+      const slope = den ? num / den : 0;
+      const ty0 = my + slope * (ts[tg[0]] - mt), ty1 = my + slope * (ts[tg[n - 1]] - mt);
+      if (ty0 > 0) pct = (ty1 - ty0) / ty0 * 100;
+    }
+    const k = Math.min(3, tg.length);
+    return { pct, lo: Math.min(...vis.map(i => meds[i])), hi: Math.max(...vis.map(i => meds[i])),
+             to: median(tg.slice(-k).map(i => meds[i])), days: tg.length };
   }
   function robustRange (pts) {        // pts: [{med, cnt}] → [lo, hi, pad]
     const m = median(pts.map(p => p.med));
