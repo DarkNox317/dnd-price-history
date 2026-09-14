@@ -212,8 +212,8 @@
         <div><h3 class="rankable" data-rank="down">급락 (직전 수집일 대비) <span class="more">전체 ▸</span></h3><div id="h_down"></div></div>
       </div>
       <div class="cols">
-        <div><h3 class="rankable" data-rank="wup">주간 급등 (7일 대비) <span class="more">전체 ▸</span></h3><div id="h_wup"></div></div>
-        <div><h3 class="rankable" data-rank="wdown">주간 급락 (7일 대비) <span class="more">전체 ▸</span></h3><div id="h_wdown"></div></div>
+        <div><h3 class="rankable" data-rank="wup">주간 추세 급등 (7일) <span class="more">전체 ▸</span></h3><div id="h_wup"></div></div>
+        <div><h3 class="rankable" data-rank="wdown">주간 추세 급락 (7일) <span class="more">전체 ▸</span></h3><div id="h_wdown"></div></div>
         <div><h3 class="rankable" data-rank="surge">거래량 급증 (평소 대비) <span class="more">전체 ▸</span></h3><div id="h_surge"></div></div>
       </div>
       <div class="cols">
@@ -465,38 +465,19 @@
       li(m.id, moverVal(m, "val down"))).join("") :
       '<div class="li" style="cursor:default;color:var(--muted)">' + (Pd ? "±3% 이상 변동 없음" : "이틀치가 쌓이면 표시돼") + '</div>';
 
-    // 주간 무버: 최근 수집일을 ~7일 전 수집일과 비교
     const idxL = withData.indexOf(L);
-    let Wd = null;
-    for (let i = idxL - 1; i >= 0; i--) {
-      if ((new Date(L) - new Date(withData[i])) / 864e5 >= 6) { Wd = withData[i]; break; }
-    }
-    let wups = [], wdowns = [], wupsAll = [], wdownsAll = [];
-    if (Wd) {
-      const wk = dayMap[Wd];
-      const mv = ids.filter(id => wk[id] && wk[id][3] >= 5 && day[id][3] >= 5 && wk[id][0] > 0 &&
-                                  !lowDay(wk[id], id) && !lowDay(day[id], id) &&
-                                  !weirdPrice(wk[id], id) && !weirdPrice(day[id], id))
-        .map(id => ({ id, from: wk[id][0], to: day[id][0], pct: (day[id][0] - wk[id][0]) / wk[id][0] * 100 }));
-      mv.sort((a, b) => b.pct - a.pct);
-      wupsAll = mv.filter(m => m.pct >= 10);
-      wdownsAll = mv.filter(m => m.pct <= -10).reverse();
-      wups = wupsAll.slice(0, 6);
-      wdowns = wdownsAll.slice(0, 6);
-    }
-    RANKS.wup = { title: "주간 급등 전체 — " + (Wd || "") + " → " + L, rows: wupsAll.map(m => ({ id: m.id, val: moverVal(m, "val up") })) };
-    RANKS.wdown = { title: "주간 급락 전체 — " + (Wd || "") + " → " + L, rows: wdownsAll.map(m => ({ id: m.id, val: moverVal(m, "val down") })) };
 
-    // 월간 무버: 최근 최대 30일 구간의 추세선(최소제곱) 기울기 기준.
-    // 자료가 30일 미만이면 있는 날짜만으로 계산 (아이템당 최소 5일 필요).
-    // 지점은 거래 5건+ 인 날만 쓰고, 표본 부족일(평소 거래량 20% 미만)은 제외.
-    const mDays = withData.slice(-30);
-    let mupsAll = [], mdownsAll = [];
-    if (mDays.length >= 5) {
-      const t0 = new Date(mDays[0]).getTime();
-      const span = Math.max(1, new Date(mDays[mDays.length - 1]).getTime() - t0);
+    // 주간·월간 무버: 구간의 추세선(로그 최소제곱) 기울기 기준.
+    // 자료가 구간보다 적으면 있는 날짜만으로 계산 (아이템당 최소 minDays 일 필요).
+    // 지점은 거래 5건+ 인 날만 쓰고, 표본 부족일(평소 거래량 20% 미만)·골드 이송일은 제외.
+    // 기간 최저·최고는 이렇게 걸러진 지점들의 중앙값에서 뽑는다 (튀는 날에 안 끌려감).
+    function trendMovers (days, minDays) {
+      const ups = [], downs = [];
+      if (days.length < minDays) return { ups, downs };
+      const t0 = new Date(days[0]).getTime();
+      const span = Math.max(1, new Date(days[days.length - 1]).getTime() - t0);
       const seriesMap = {};
-      for (const d of mDays) {
+      for (const d of days) {
         const dm = dayMap[d];
         const tt = (new Date(d).getTime() - t0) / span;
         for (const id in dm) {
@@ -506,15 +487,15 @@
       }
       for (const id in seriesMap) {
         let s = seriesMap[id];
-        if (s.length < 5) continue;
+        if (s.length < minDays) continue;
         // 골드 이송 거래일(평소 가격 10배↑/10분의1↓) 제외 — 추세가 세탁 거래에 안 끌려가게
         const pmed = median(s.map(p => p.med));
         s = s.filter(p => p.med <= pmed * 10 && p.med >= pmed / 10);
-        if (s.length < 5) continue;
+        if (s.length < minDays) continue;
         const cmed = median(s.map(p => p.cnt));
         if (cmed >= 50) {
           const f = s.filter(p => p.cnt >= cmed * 0.2);
-          if (f.length >= 5) s = f;
+          if (f.length >= minDays) s = f;
         }
         // 로그 공간 회귀: %-변화가 대칭·안정적이고, 적합 시작값이 0에 가까워지며 %가 폭발하는 일이 없음
         const n = s.length;
@@ -525,15 +506,31 @@
         if (!den) continue;
         const slope = num / den;
         const pct = (Math.exp(slope * (s[n - 1].t - s[0].t)) - 1) * 100;
-        const rec = { id, pct, to: s[n - 1].med, days: n };
-        if (pct >= 10) mupsAll.push(rec);
-        else if (pct <= -10) mdownsAll.push(rec);
+        const meds = s.map(p => p.med);
+        const rec = { id, pct, lo: Math.min(...meds), hi: Math.max(...meds), days: n };
+        if (pct >= 10) ups.push(rec);
+        else if (pct <= -10) downs.push(rec);
       }
-      mupsAll.sort((a, b) => b.pct - a.pct);
-      mdownsAll.sort((a, b) => a.pct - b.pct);
+      ups.sort((a, b) => b.pct - a.pct);
+      downs.sort((a, b) => a.pct - b.pct);
+      return { ups, downs };
     }
-    const trendValHtml = (m, cls) => '<span class="val">' + m.days + '일 · ' + fmtGold(m.to) +
-      ' <span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
+    // 급등은 최저→최고, 급락은 최고→최저 (움직인 방향대로 읽히게)
+    const trendValHtml = (m, cls) => {
+      const [a, b] = m.pct >= 0 ? [m.lo, m.hi] : [m.hi, m.lo];
+      return '<span class="val">' + m.days + '일 · ' + fmtGold(a) + '→<b style="color:var(--ink)">' + fmtGold(b) + '</b> ' +
+        '<span class="' + cls + '" style="font-weight:700">' + fmtPct(m.pct) + '</span></span>';
+    };
+
+    const wDays = withData.filter(d => (new Date(L) - new Date(d)) / 864e5 < 7);
+    const { ups: wupsAll, downs: wdownsAll } = trendMovers(wDays, 3);
+    RANKS.wup = { title: "주간 추세 급등 전체 — 최근 " + wDays.length + "일 추세 기준",
+                  rows: wupsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val up") })) };
+    RANKS.wdown = { title: "주간 추세 급락 전체 — 최근 " + wDays.length + "일 추세 기준",
+                    rows: wdownsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val down") })) };
+
+    const mDays = withData.slice(-30);
+    const { ups: mupsAll, downs: mdownsAll } = trendMovers(mDays, 5);
     RANKS.mup = { title: "월간 추세 급등 전체 — 최근 " + mDays.length + "일 추세 기준",
                   rows: mupsAll.map(m => ({ id: m.id, val: trendValHtml(m, "val up") })) };
     RANKS.mdown = { title: "월간 추세 급락 전체 — 최근 " + mDays.length + "일 추세 기준",
@@ -542,10 +539,10 @@
       emptyLi(mDays.length >= 5 ? "추세 +10% 이상 없음" : "5일치가 쌓이면 표시돼");
     $("h_mdown").innerHTML = mdownsAll.length ? mdownsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val down"))).join("") :
       emptyLi(mDays.length >= 5 ? "추세 -10% 이하 없음" : "5일치가 쌓이면 표시돼");
-    $("h_wup").innerHTML = wups.length ? wups.map(m => li(m.id, moverVal(m, "val up"))).join("") :
-      emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
-    $("h_wdown").innerHTML = wdowns.length ? wdowns.map(m => li(m.id, moverVal(m, "val down"))).join("") :
-      emptyLi(Wd ? "±10% 이상 변동 없음" : "7일치가 쌓이면 표시돼");
+    $("h_wup").innerHTML = wupsAll.length ? wupsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val up"))).join("") :
+      emptyLi(wDays.length >= 3 ? "추세 +10% 이상 없음" : "3일치가 쌓이면 표시돼");
+    $("h_wdown").innerHTML = wdownsAll.length ? wdownsAll.slice(0, 6).map(m => li(m.id, trendValHtml(m, "val down"))).join("") :
+      emptyLi(wDays.length >= 3 ? "추세 -10% 이하 없음" : "3일치가 쌓이면 표시돼");
 
     // 거래량 급증: 직전 수집일들(최대 7일) 평균의 3배 이상
     const prevDays = withData.slice(Math.max(0, idxL - 7), idxL);
@@ -712,7 +709,18 @@
   let currentRank = null;      // 지금 열려 있는 순위 화면
   let rankFilter = "all";      // 순위 화면 카테고리 필터
   let rankPeriod = "d";        // 거래량·거래대금 TOP 의 기간 (일간/주간/월간/시즌)
+  let rankMin1k = false;       // 최근 중앙값 1k 이상만 보기 (순위 화면 사이에서도 유지)
   let HOME_DAYMAP = null, HOME_WITHDATA = null;
+
+  // 아이템의 최근 중앙값: 가장 최근에 거래가 있던 날의 중앙값
+  function recentMed (id) {
+    const wd = HOME_WITHDATA || [];
+    for (let i = wd.length - 1; i >= 0; i--) {
+      const v = HOME_DAYMAP[wd[i]][id];
+      if (v && v[0] > 0) return v[0];
+    }
+    return 0;
+  }
   let NAV_ORIGIN = "home";     // 아이템 화면에 "어디서" 들어왔는지 (← 버튼 복귀용)
 
   // 거래량·거래대금 TOP: 선택 기간의 합산으로 순위 재계산
@@ -764,12 +772,14 @@
       $("rank-period").innerHTML = [["d", "일간"], ["w", "주간"], ["m", "월간"], ["s", "시즌 전체"]].map(([p, lbl]) =>
         '<button class="rng" data-period="' + p + '" data-on="' + (rankPeriod === p ? 1 : 0) + '" type="button">' + lbl + '</button>').join("");
     }
-    const rows = rankFilter === "all" ? r.rows :
+    let rows = rankFilter === "all" ? r.rows :
       r.rows.filter(x => (CATALOG[x.id] || [])[3] === rankFilter);
+    if (rankMin1k) rows = rows.filter(x => recentMed(x.id) >= 1000);
     $("rank-title").textContent = r.title + " (" + rows.length.toLocaleString() + "개)";
     $("rank-filter").innerHTML = ['all', 'weapon', 'armor', 'accessory', 'utility', 'misc'].map(t =>
       '<button class="rng" data-type="' + t + '" data-on="' + (rankFilter === t ? 1 : 0) + '" type="button">' +
-      (t === "all" ? "전체" : TYPE_KO[t]) + '</button>').join("");
+      (t === "all" ? "전체" : TYPE_KO[t]) + '</button>').join("") +
+      '<button class="rng" data-min1k="1" data-on="' + (rankMin1k ? 1 : 0) + '" type="button" style="margin-left:.6rem" title="최근 중앙값 1,000골드 이상만">1k 이상</button>';
     $("rank-list").innerHTML = rows.map((x, i) => {
       const [ko, , rar] = CATALOG[x.id] || [prettyId(x.id), "", ""];
       return '<div class="li" data-id="' + x.id + '"><span class="rankno">' + (i + 1) + '</span>' +
@@ -794,9 +804,10 @@
   }
 
   $("rank-filter").addEventListener("click", (ev) => {
-    const b = ev.target.closest("[data-type]");
+    const b = ev.target.closest("[data-type],[data-min1k]");
     if (!b) return;
-    rankFilter = b.dataset.type;
+    if (b.dataset.min1k) rankMin1k = !rankMin1k;
+    else rankFilter = b.dataset.type;
     renderRankList();
   });
   $("rank-period").addEventListener("click", (ev) => {
