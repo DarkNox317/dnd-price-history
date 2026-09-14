@@ -323,6 +323,7 @@
   let CATALOG = {}, MONTHS = [], PATCHES = [], SEASONS = [], DAYS5M = [];
   const monthData = {}, day5mCache = {};
   let currentItem = null, currentRange = 7, currentSeason = null, current5mDate = null;
+  let lastAllRows = [];        // 현재 아이템의 전체 일별 시리즈 (구간 자르기 전) — 골드 이송일 판정의 "평소 가격" 기준
   let overlayOn = false, overlaySel = new Set();      // 시즌 겹쳐보기 상태
   const OVL_COLORS = ["#7da7d9", "#c99fe0", "#8fbf8f", "#d9a97d", "#d97d7d"];
 
@@ -1297,6 +1298,7 @@
 
   async function buildSeries () {
     const rows = await buildAllRows();
+    lastAllRows = rows;
     if (currentRange === "season" && currentSeason) {
       const [from, to] = seasonRange(currentSeason);
       const end = SEASONS[SEASONS.indexOf(currentSeason) + 1] ? to : "9999-99-99";
@@ -1424,9 +1426,9 @@
     let tg = gi.filter((_, k) => giTrust.has(k));
     if (tg.length < 2) tg = gi;
     {
-      const pm = median(tg.map(i => meds[i]));
+      const pm = median(pts.length >= 3 ? pts.map(p => p.med) : tg.map(i => meds[i]));   // 평소 가격 = 전체 기간 중앙값
       const tgw = tg.filter(i => meds[i] <= pm * 10 && meds[i] >= pm / 10);
-      if (tgw.length >= 3) tg = tgw;
+      if (tgw.length >= 2) tg = tgw;
     }
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
     let vis = gi.filter(i => meds[i] >= lo && meds[i] <= hi);
@@ -1441,12 +1443,13 @@
     if (tg.length >= 3) {
       const n = tg.length;
       const mt = tg.reduce((s, i) => s + ts[i], 0) / n;
-      const my = tg.reduce((s, i) => s + ys[i], 0) / n;
+      const ly = ys.map(v => Math.log(Math.max(v, 1e-6)));
+      const my = tg.reduce((s, i) => s + ly[i], 0) / n;
       let num = 0, den = 0;
-      for (const i of tg) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
+      for (const i of tg) { num += (ts[i] - mt) * (ly[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
-      const ty0 = my + slope * (ts[tg[0]] - mt), ty1 = my + slope * (ts[tg[n - 1]] - mt);
-      if (ty0 > 0) pct = Math.max(-100, (ty1 - ty0) / ty0 * 100);
+      const ty0 = Math.exp(my + slope * (ts[tg[0]] - mt)), ty1 = Math.exp(my + slope * (ts[tg[n - 1]] - mt));
+      pct = (ty1 / ty0 - 1) * 100;
     }
     const k = Math.min(3, tg.length);
     return { pct, lo: Math.min(...vis.map(i => meds[i])), hi: Math.max(...vis.map(i => meds[i])),
@@ -1514,10 +1517,12 @@
     const giTrust = trustSet(giPts);
     let tg = gi.filter((_, k) => giTrust.has(k));               // 추세 계산용: 표본부족 제외 + 신뢰 지점만
     if (tg.length < 2) tg = gi;
-    {   // 골드 이송(RMT)일 — 기간 중앙값의 10배↑/10분의1↓ — 은 추세에서만 제외 (그래프·최고·최저엔 그대로)
-      const pm = median(tg.map(i => meds[i]));
+    {   // 골드 이송(RMT)일 — 평소 가격(전체 기간 중앙값)의 10배↑/10분의1↓ — 은 추세에서만 제외 (그래프·최고·최저엔 그대로)
+        // 구간 중앙값이 아니라 전체 기간 중앙값을 쓰는 이유: 한 주가 통째로 이송 거래면 구간 중앙값 자체가 100k라서 못 거름
+      const base = intraday || lastAllRows.length < 3 ? tg.map(i => meds[i]) : lastAllRows.map(r => r.med);
+      const pm = median(base);
       const tgw = tg.filter(i => meds[i] <= pm * 10 && meds[i] >= pm / 10);
-      if (tgw.length >= 3) tg = tgw;
+      if (tgw.length >= 2) tg = tgw;
     }
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));   // 축 범위로 클램프된 값 (그래프에 그려지는 값)
     // 최고·최저 표기용: 그래프에 실제 위치로 그려진 점은 전부 포함 (눈에 보이는 것과 숫자가 항상 일치)
@@ -1618,12 +1623,15 @@
     if (tg.length >= 3) {
       const n = tg.length;
       const mt = tg.reduce((s, i) => s + ts[i], 0) / n;
-      const my = tg.reduce((s, i) => s + ys[i], 0) / n;
+      // 로그 공간 회귀: 변화율이 대칭이고(2배↑ = 절반↓) 직선이 0 밑으로 내려가 -100% 아래가 나오는 일이 없음.
+      // 그래프엔 적합선의 양 끝(가격 공간)을 잇는 직선으로 표시.
+      const ly = ys.map(v => Math.log(Math.max(v, 1e-6)));
+      const my = tg.reduce((s, i) => s + ly[i], 0) / n;
       let num = 0, den = 0;
-      for (const i of tg) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
+      for (const i of tg) { num += (ts[i] - mt) * (ly[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
-      const ty0 = my + slope * (ts[tg[0]] - mt), ty1 = my + slope * (ts[tg[n - 1]] - mt);
-      if (ty0 > 0) trendPct = Math.max(-100, (ty1 - ty0) / ty0 * 100);   // 가격은 100% 넘게 못 떨어짐
+      const ty0 = Math.exp(my + slope * (ts[tg[0]] - mt)), ty1 = Math.exp(my + slope * (ts[tg[n - 1]] - mt));
+      trendPct = (ty1 / ty0 - 1) * 100;
       // 색은 "기간 변동 (추세)" 타일과 동일 규칙: +3% 이상 빨강(상승), -3% 이하 파랑(하락)
       const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
                    trendPct !== null && trendPct <= -3 ? "var(--down)" : "var(--muted)";
