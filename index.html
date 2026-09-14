@@ -1423,6 +1423,11 @@
     const giTrust = trustSet(giPts);
     let tg = gi.filter((_, k) => giTrust.has(k));
     if (tg.length < 2) tg = gi;
+    {
+      const pm = median(tg.map(i => meds[i]));
+      const tgw = tg.filter(i => meds[i] <= pm * 10 && meds[i] >= pm / 10);
+      if (tgw.length >= 3) tg = tgw;
+    }
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));
     let vis = gi.filter(i => meds[i] >= lo && meds[i] <= hi);
     if (vis.length < 2) vis = tg;
@@ -1441,7 +1446,7 @@
       for (const i of tg) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
       const ty0 = my + slope * (ts[tg[0]] - mt), ty1 = my + slope * (ts[tg[n - 1]] - mt);
-      if (ty0 > 0) pct = (ty1 - ty0) / ty0 * 100;
+      if (ty0 > 0) pct = Math.max(-100, (ty1 - ty0) / ty0 * 100);
     }
     const k = Math.min(3, tg.length);
     return { pct, lo: Math.min(...vis.map(i => meds[i])), hi: Math.max(...vis.map(i => meds[i])),
@@ -1509,6 +1514,11 @@
     const giTrust = trustSet(giPts);
     let tg = gi.filter((_, k) => giTrust.has(k));               // 추세 계산용: 표본부족 제외 + 신뢰 지점만
     if (tg.length < 2) tg = gi;
+    {   // 골드 이송(RMT)일 — 기간 중앙값의 10배↑/10분의1↓ — 은 추세에서만 제외 (그래프·최고·최저엔 그대로)
+      const pm = median(tg.map(i => meds[i]));
+      const tgw = tg.filter(i => meds[i] <= pm * 10 && meds[i] >= pm / 10);
+      if (tgw.length >= 3) tg = tgw;
+    }
     const ys = meds.map(v => Math.max(lo, Math.min(hi, v)));   // 축 범위로 클램프된 값 (그래프에 그려지는 값)
     // 최고·최저 표기용: 그래프에 실제 위치로 그려진 점은 전부 포함 (눈에 보이는 것과 숫자가 항상 일치)
     let vis = gi.filter(i => meds[i] >= lo && meds[i] <= hi);
@@ -1613,7 +1623,7 @@
       for (const i of tg) { num += (ts[i] - mt) * (ys[i] - my); den += (ts[i] - mt) * (ts[i] - mt); }
       const slope = den ? num / den : 0;
       const ty0 = my + slope * (ts[tg[0]] - mt), ty1 = my + slope * (ts[tg[n - 1]] - mt);
-      if (ty0 > 0) trendPct = (ty1 - ty0) / ty0 * 100;
+      if (ty0 > 0) trendPct = Math.max(-100, (ty1 - ty0) / ty0 * 100);   // 가격은 100% 넘게 못 떨어짐
       // 색은 "기간 변동 (추세)" 타일과 동일 규칙: +3% 이상 빨강(상승), -3% 이하 파랑(하락)
       const tcol = trendPct !== null && trendPct >= 3 ? "var(--up)" :
                    trendPct !== null && trendPct <= -3 ? "var(--down)" : "var(--muted)";
