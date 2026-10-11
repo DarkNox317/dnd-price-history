@@ -209,8 +209,11 @@ def save(day, detail, daily, merge=False):
         month[daykey] = daily
     json.dump(month, open(p2, "w", encoding="utf-8"), separators=(",", ":"))
 
+    # 거래 0건인 날(시즌 와이프 후 거래소 닫힘 등)은 파일은 남기되(재수집 방지) 사이트 목록에선 뺀다.
+    # 빈 날 파일은 {"date":..,"items":{}} 수십 바이트라 크기로 구분.
     days = sorted(f[:-5] for f in os.listdir(d5)
-                  if f.endswith(".json") and f != "index.json")
+                  if f.endswith(".json") and f != "index.json"
+                  and os.path.getsize(os.path.join(d5, f)) > 64)
     json.dump(days, open(os.path.join(d5, "index.json"), "w"), separators=(",", ":"))
     months = sorted(f[:-5] for f in os.listdir(d2)
                     if f.endswith(".json") and f != "months.json")

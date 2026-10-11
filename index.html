@@ -148,6 +148,8 @@
   .pt .desc { color: var(--ink-2); font-size: .8rem; }
 
   .empty { color: var(--muted); padding: 3rem 0; text-align: center; font-size: .92rem; line-height: 1.8; }
+  .seasonnote { margin: .6rem 0 .2rem; padding: .55rem .8rem; border-left: 3px solid var(--accent);
+    background: var(--ground); color: var(--ink-2); font-size: .82rem; line-height: 1.55; border-radius: 2px; }
   .note { margin-top: 1.2rem; font-size: .74rem; color: var(--muted); line-height: 1.7; }
 
   .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
@@ -205,6 +207,7 @@
   <div id="home">
     <div class="empty" id="placeholder">아이템을 검색하거나, 데이터가 쌓이면 여기 요약이 표시돼.</div>
     <div id="dash" hidden>
+      <p class="seasonnote" id="h_notice" hidden></p>
       <div class="tiles" id="h_tiles"></div>
       <div class="cols">
         <div><h3 class="rankable" data-rank="vol">최근 수집일 거래량 TOP <span class="more">전체 ▸</span></h3><div id="h_vol"></div></div>
@@ -221,7 +224,7 @@
         <div><h3 class="rankable" data-rank="mdown">월간 급락 (최근 30일 추세) <span class="more">전체 ▸</span></h3><div id="h_mdown"></div></div>
       </div>
       <div class="cols">
-        <div><h3>시장 지수 (시작일 = 100)</h3><div id="h_index"></div></div>
+        <div><h3>시장 지수 (시즌 첫 기록일 = 100)</h3><div id="h_index"></div></div>
         <div><h3 class="rankable" data-rank="turn">골드 회전량 (하루 총 거래대금) <span class="more">자세히 ▸</span></h3><div id="h_turn"></div></div>
         <div><h3>자전거래 의심 (거래량 폭증 + 가격 정지)</h3><div id="h_wash"></div></div>
       </div>
@@ -286,6 +289,7 @@
       <button class="rng" id="day-next" type="button" title="다음 날짜">▶</button>
     </div>
     <div class="ranges" id="seasonbar" hidden></div>
+    <p class="seasonnote" id="range-note" hidden></p>
     <div class="tiles" id="tiles"></div>
     <figure>
       <div id="chart"></div>
@@ -379,26 +383,52 @@
   /* ── 홈 대시보드 ── */
   async function renderHome () {
     if (!MONTHS.length) return;
-    // 최근 두 달치만 읽으면 어제/그제를 항상 커버함
-    const recent = MONTHS.slice(-2);
+    // 최근 두 달치로 최신 수집일을 찾고, 그 시즌이 더 앞에서 시작했으면 그 달들도 읽음
+    // (시즌 전체 합산·추세가 중간에서 잘리지 않게)
     const dayMap = {};
-    for (const m of recent) {
+    const loaded = new Set();
+    const loadInto = async (m) => {
+      if (loaded.has(m)) return;
+      loaded.add(m);
       const md = await loadMonth(m);
       for (const d in md) dayMap[d] = md[d];
-    }
-    const dates = Object.keys(dayMap).sort();
-    const withData = dates.filter(d => Object.keys(dayMap[d]).length > 0);
-    if (!withData.length) return;
+    };
+    for (const m of MONTHS.slice(-2)) await loadInto(m);
+    const nonEmpty = () => Object.keys(dayMap).sort().filter(d => Object.keys(dayMap[d]).length > 0);
+    let allDays = nonEmpty();
+    if (!allDays.length) return;
 
-    const L = withData[withData.length - 1];             // 최신 수집일
+    const L = allDays[allDays.length - 1];               // 최신 수집일
+    const LS = seasonOfDate(L);                          // 그 날짜가 속한 시즌
+    if (LS) {
+      const m0 = seasonDataStart(LS).slice(0, 7);
+      for (const m of MONTHS) if (m >= m0) await loadInto(m);
+      allDays = nonEmpty();
+    }
+    // 홈의 모든 비교·추세·합산은 이 시즌 안에서만 (시즌이 바뀌면 아이템 옵션이 전부 달라짐)
+    const withData = LS ? allDays.filter(d => seasonOfDate(d) === LS) : allDays;
     const Pd = withData.length > 1 ? withData[withData.length - 2] : null;
     const day = dayMap[L];
     const ids = Object.keys(day);
 
+    // 새 시즌이 시작됐는데 아직 그 시즌 거래가 없으면(와이프 후 거래소 닫힘) 안내
+    const today = new Date().toISOString().slice(0, 10);
+    const runS = [...SEASONS].reverse().find(s => s.date <= today);
+    const notice = $("h_notice");
+    if (runS && LS && runS !== LS) {
+      notice.innerHTML = "<b>시즌 " + runS.num + "</b>이 " + runS.date.slice(5).replace("-", "/") +
+        "에 시작됐지만 아직 새 시즌 거래 기록이 없어 (와이프 후 거래소가 닫혀 있음). " +
+        "아래는 <b>시즌 " + LS.num + " 마지막 기록</b>이야. 거래가 다시 시작돼서 수집되면 자동으로 시즌 " +
+        runS.num + " 기준으로 바뀌어.";
+      notice.hidden = false;
+    } else notice.hidden = true;
+    const endsSeason = SEASONS.some(s => s.date === L);  // 와이프일 = 점검 전까지만 거래한 부분 하루
+
     const totCnt = ids.reduce((s, id) => s + day[id][3], 0);
     $("h_tiles").innerHTML =
-      tile("최근 수집일 (UTC)", L.slice(5).replace("-", "/")) +
-      tile("기록된 일수", withData.length + ' <small>일</small>') +
+      tile("최근 수집일 (UTC)", L.slice(5).replace("-", "/") +
+        (endsSeason ? ' <small>시즌 마지막 날 · 점검 전까지</small>' : '')) +
+      tile(LS ? "시즌 " + LS.num + " 기록 일수" : "기록된 일수", withData.length + ' <small>일</small>') +
       tile("그날 거래", totCnt.toLocaleString() + ' <small>건</small>') +
       tile("거래된 아이템", ids.length.toLocaleString() + ' <small>종</small>');
 
@@ -716,11 +746,7 @@
     if (rankPeriod === "d") days = [L];
     else if (rankPeriod === "w") days = wd.filter(d => (new Date(L) - new Date(d)) / 864e5 < 7);
     else if (rankPeriod === "m") days = wd.filter(d => (new Date(L) - new Date(d)) / 864e5 < 30);
-    else {
-      const today = new Date().toISOString().slice(0, 10);
-      const cs = [...SEASONS].reverse().find(s => s.date <= today);
-      days = cs ? wd.filter(d => d >= cs.date) : wd;
-    }
+    else days = wd;      // HOME_WITHDATA 자체가 최신 데이터의 시즌 전체
     const agg = {};
     for (const d of days) {
       const dm = HOME_DAYMAP[d];
@@ -731,7 +757,9 @@
         if (v.length > 8 && v[8] != null) { a.val += v[8]; a.has = true; }
       }
     }
-    const label = { d: "일간 (" + L + ")", w: "주간 합산", m: "월간 합산", s: "시즌 전체 합산" }[rankPeriod];
+    const LS = seasonOfDate(L);
+    const label = { d: "일간 (" + L + ")", w: "주간 합산", m: "월간 합산",
+                    s: (LS ? "시즌 " + LS.num : "시즌") + " 전체 합산" }[rankPeriod];
     if (kind === "vol") {
       return {
         title: "거래량 TOP — " + label,
@@ -1212,7 +1240,12 @@
       const dataStart = MONTHS.length ? MONTHS[0] + "-01" : today;
       const list = SEASONS.filter((s, i) => s.date <= today &&
         ((SEASONS[i + 1] && SEASONS[i + 1].date) || today) >= dataStart);
-      if (!currentSeason || !list.includes(currentSeason)) currentSeason = list[list.length - 1] || null;
+      if (!currentSeason || !list.includes(currentSeason)) {
+        // 기본은 최신 데이터가 있는 시즌 (새 시즌이 막 시작돼 거래가 없을 땐 직전 시즌)
+        const wd = HOME_WITHDATA || [];
+        const ls = wd.length ? seasonOfDate(wd[wd.length - 1]) : null;
+        currentSeason = (ls && list.includes(ls)) ? ls : (list[list.length - 1] || null);
+      }
       // 겹쳐보기: 켜면 칩이 다중 선택이 되고, 선택된 시즌마다 그래프 선 색이 배정됨
       const colorOf = overlayColorMap(list);
       const chips = list.map(s => {
@@ -1291,9 +1324,10 @@
   function seasonRange (s) {
     const i = SEASONS.indexOf(s);
     const today = new Date().toISOString().slice(0, 10);
-    const end = SEASONS[i + 1] ? shiftDate(SEASONS[i + 1].date, -1) :
-      (today > s.date ? today : s.date);
-    return [s.date, end];
+    const from = seasonDataStart(s);
+    const end = SEASONS[i + 1] ? SEASONS[i + 1].date :      // 다음 시즌 와이프일까지가 이 시즌 거래
+      (today > from ? today : from);
+    return [from, end];
   }
 
   async function buildSeries () {
@@ -1302,12 +1336,25 @@
     if (currentRange === "season" && currentSeason) {
       const [from, to] = seasonRange(currentSeason);
       const end = SEASONS[SEASONS.indexOf(currentSeason) + 1] ? to : "9999-99-99";
-      return rows.filter(r => r.date >= from && r.date <= end);
+      const out = rows.filter(r => r.date >= from && r.date <= end);
+      lastAllRows = out;                       // '평소 가격'(골드 이송 판정) 기준도 같은 시즌으로
+      return out;
     }
     if (typeof currentRange === "number" && currentRange > 0 && rows.length) {
-      // "오늘"이 아니라 데이터가 있는 마지막 날 기준 최근 N일 (수집은 항상 하루 이상 늦으므로)
-      const cut = shiftDate(rows[rows.length - 1].date, -(currentRange - 1));
-      return rows.filter(r => r.date >= cut);
+      // "오늘"이 아니라 데이터가 있는 마지막 날 기준 최근 N일 (수집은 항상 하루 이상 늦으므로).
+      // 단 그 마지막 날의 시즌 안에서만 — 시즌이 바뀌면 옵션이 달라 이전 시즌 값과 잇지 않는다.
+      const last = rows[rows.length - 1].date;
+      const S = seasonOfDate(last);
+      const sRows = S ? rows.filter(r => seasonOfDate(r.date) === S) : rows;
+      lastAllRows = sRows;
+      const cut = shiftDate(last, -(currentRange - 1));
+      const out = sRows.filter(r => r.date >= cut);
+      if (S && out.length < rows.filter(r => r.date >= cut).length) {
+        const note = $("range-note");
+        note.textContent = "시즌 " + S.num + " 거래만 표시 — 시즌이 바뀌며 아이템 옵션이 달라져 이전 시즌과 잇지 않아. 이전 시즌은 '시즌별'에서 볼 수 있어.";
+        note.hidden = false;
+      }
+      return out;
     }
     return rows;
   }
@@ -1350,6 +1397,9 @@
       if (!p.date || p.date < first || p.date > last) continue;
       const win = rows.filter(r => Math.abs((new Date(r.date) - new Date(p.date)) / 864e5) <= 7);
       let delta = null, cp = false;
+      // 패치 앞뒤로 각각 2일 이상 있어야 판정 (데이터 끝에 걸린 패치·시즌 와이프일을 오판하지 않게)
+      const short = win.filter(r => r.date < p.date).length < 2 || win.filter(r => r.date > p.date).length < 2;
+      if (short) { out.push({ ...p, delta, cp, short }); continue; }
       if (win.length >= 5) {
         const xs = win.map(r => Math.log(r.med));
         const total = sse(xs);
@@ -1373,6 +1423,17 @@
     return out.reverse();   // 과거 → 최신 순
   }
   const shiftDate = (d, n) => new Date(new Date(d + "T00:00:00Z").getTime() + n * 864e5).toISOString().slice(0, 10);
+
+  // 시즌 경계 — 시즌 출시일(=와이프일) 당일 거래는 "직전 시즌" 것으로 본다.
+  // 와이프 점검은 그날 도중에 시작되고 점검 뒤엔 거래소가 닫혀 있어서, 그날 기록은 전부 이전 시즌 거래다.
+  // (시즌 11: 2026-10-09 11:41 UTC 이후 판매 0건 확인.) 시즌이 바뀌면 아이템 옵션이 전부 달라지므로
+  // 시즌을 넘나드는 비교(전일 대비·추세·지수·순위 합산)는 하지 않는다.
+  const seasonDataStart = (s) => shiftDate(s.date, 1);
+  function seasonOfDate (d) {
+    let r = null;
+    for (const s of SEASONS) if (seasonDataStart(s) <= d) r = s;
+    return r;
+  }
   const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
   function deltaWord (d) {
@@ -1489,6 +1550,7 @@
 
   async function render () {
     const seq = ++renderSeq;
+    $("range-note").hidden = true;            // buildSeries 가 시즌 경계로 잘랐을 때만 다시 켬
     if (currentRange === "season" && overlayOn) return renderOverlay(seq);
     const intraday = currentRange === "1d";
     const rows = intraday ? await build5mSeries() : await buildSeries();
@@ -1710,7 +1772,8 @@
         }
         const [word, cls2] = deltaWord(p.delta);
         const deltaTxt = p.delta === null ? "—" : fmtPct(p.delta);
-        const desc = p.cp ? "변화점 탐지 — 패치 시점 전후로 가격 수준 " + word
+        const desc = p.short ? "패치 앞뒤 데이터가 아직 부족해 판정 보류"
+                   : p.cp ? "변화점 탐지 — 패치 시점 전후로 가격 수준 " + word
                           : "패치 시점에 통계적으로 뚜렷한 가격 변화점 없음";
         return '<div class="pt"><span class="d">' + p.date + '</span>' +
           '<span class="t">' + p.title + '</span>' +
@@ -1793,7 +1856,7 @@
 
     // 축 길이 = 선택된 시즌들의 실제 기간 중 최대 (과거 시즌 전체 길이만큼 펼쳐서
     // 현재 시즌의 "앞으로 남은 구간"이 보이게)
-    const maxDays = Math.max(...selected.map(s => dayOf(seasonRange(s)[1], s.date)), 7);
+    const maxDays = Math.max(...selected.map(s => { const [f, t] = seasonRange(s); return dayOf(t, f); }), 7);
 
     const allPts = seriesList.flatMap(sr => sr.good.map(k => ({ med: sr.rows[k].med, cnt: sr.rows[k].cnt })));
     const [lo, hi, pad] = robustRange(allPts);   // 표본 부족일 제외 + 신뢰 판정
